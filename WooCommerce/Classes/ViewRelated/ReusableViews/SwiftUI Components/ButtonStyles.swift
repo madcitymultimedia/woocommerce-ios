@@ -30,6 +30,16 @@ struct PlusButtonStyle: ButtonStyle {
     }
 }
 
+/// Adds style for a button in a table row.
+///
+/// The entire row is selectable with a grey background when selected.
+///
+struct BaseButtonRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        return BaseButtonRow(configuration: configuration)
+    }
+}
+
 /// Adds a plus button style with table row styling.
 ///
 /// The button label includes a plus icon. The entire row is selectable with a grey background when selected.
@@ -238,6 +248,22 @@ private struct PlusButton: View {
         } else {
             return .buttonDisabledTitle
         }
+    }
+}
+
+private struct BaseButtonRow: View {
+    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
+
+    let configuration: ButtonStyleConfiguration
+
+    var body: some View {
+        BaseButton(configuration: configuration)
+            .frame(minHeight: Style.minRowHeight)
+            .contentShape(Rectangle())
+            .padding(.horizontal, Style.horizontalPadding)
+            .padding(.horizontal, insets: safeAreaInsets)
+            .background(Color(configuration.isPressed ? .listBackground : .clear))
+            .ignoresSafeArea()
     }
 }
 
