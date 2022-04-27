@@ -187,15 +187,16 @@ private struct ProductsSection: View {
 
     var body: some View {
         Group {
-            Divider()
-
-            VStack(alignment: .leading, spacing: NewOrder.Layout.verticalSpacing) {
+            VStack(alignment: .leading, spacing: NewOrder.Layout.noSpacing) {
                 Text(NewOrder.Localization.products)
                     .accessibilityAddTraits(.isHeader)
                     .headlineStyle()
+                    .padding(.horizontal, insets: safeAreaInsets)
+                    .padding()
 
                 ForEach(viewModel.productRows) { productRow in
                     ProductRow(viewModel: productRow, accessibilityHint: NewOrder.Localization.productRowAccessibilityHint)
+                        .padding()
                         .onTapGesture {
                             viewModel.selectOrderItem(productRow.id)
                         }
@@ -205,12 +206,13 @@ private struct ProductsSection: View {
 
                     Divider()
                 }
+                .padding(.horizontal, insets: safeAreaInsets)
 
                 Button(NewOrder.Localization.addProduct) {
                     showAddProduct.toggle()
                 }
                 .id(addProductButton)
-                .buttonStyle(PlusButtonStyle())
+                .buttonStyle(PlusButtonRowStyle())
                 .sheet(isPresented: $showAddProduct, onDismiss: {
                     scroll.scrollTo(addProductButton)
                 }, content: {
@@ -223,11 +225,8 @@ private struct ProductsSection: View {
                         }
                 })
             }
-            .padding(.horizontal, insets: safeAreaInsets)
-            .padding()
             .background(Color(.listForeground))
-
-            Divider()
+            .addingTopAndBottomDividers()
         }
     }
 }
