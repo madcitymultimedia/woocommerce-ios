@@ -30,6 +30,16 @@ struct PlusButtonStyle: ButtonStyle {
     }
 }
 
+/// Adds a plus button style with table row styling.
+///
+/// The button label includes a plus icon. The entire row is selectable with a grey background when selected.
+///
+struct PlusButtonRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        return PlusButtonRow(configuration: configuration)
+    }
+}
+
 /// Adds a primary button style while showing a progress view on top of the button when required.
 ///
 struct PrimaryLoadingButtonStyle: PrimitiveButtonStyle {
@@ -217,9 +227,7 @@ private struct PlusButton: View {
             } icon: {
                 Image(uiImage: .plusImage)
             }
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
         .foregroundColor(Color(foregroundColor))
         .background(Color(.clear))
     }
@@ -233,10 +241,28 @@ private struct PlusButton: View {
     }
 }
 
+private struct PlusButtonRow: View {
+    @Environment(\.safeAreaInsets) private var safeAreaInsets: EdgeInsets
+
+    let configuration: ButtonStyleConfiguration
+
+    var body: some View {
+        PlusButton(configuration: configuration)
+            .frame(maxWidth: .infinity, minHeight: Style.minRowHeight, alignment: .leading)
+            .contentShape(Rectangle())
+            .padding(.horizontal, Style.horizontalPadding)
+            .padding(.horizontal, insets: safeAreaInsets)
+            .background(Color(configuration.isPressed ? .listBackground : .clear))
+            .ignoresSafeArea()
+    }
+}
+
 private enum Style {
     static let defaultCornerRadius = CGFloat(8.0)
     static let defaultBorderWidth = CGFloat(1.0)
     static let defaultEdgeInsets = EdgeInsets(top: 12, leading: 22, bottom: 12, trailing: 22)
+    static let minRowHeight: CGFloat = 44
+    static let horizontalPadding: CGFloat = 16
 }
 
 struct PrimaryButton_Previews: PreviewProvider {
