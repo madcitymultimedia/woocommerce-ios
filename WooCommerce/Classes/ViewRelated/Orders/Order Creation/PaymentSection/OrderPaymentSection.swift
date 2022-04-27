@@ -33,9 +33,11 @@ struct OrderPaymentSection: View {
                 ProgressView()
                     .renderedIf(viewModel.isLoading)
             }
+            .padding(.horizontal, insets: safeAreaInsets)
             .padding()
 
             TitleAndValueRow(title: Localization.productsTotal, value: .content(viewModel.itemsTotal), selectionStyle: .none) {}
+                .padding(.horizontal, insets: safeAreaInsets)
 
             shippingRow
                 .sheet(isPresented: $shouldShowShippingLineDetails) {
@@ -48,11 +50,12 @@ struct OrderPaymentSection: View {
 
             if viewModel.shouldShowTaxes {
                 TitleAndValueRow(title: Localization.taxesTotal, value: .content(viewModel.taxesTotal))
+                    .padding(.horizontal, insets: safeAreaInsets)
             }
 
             TitleAndValueRow(title: Localization.orderTotal, value: .content(viewModel.orderTotal), bold: true, selectionStyle: .none) {}
+                .padding(.horizontal, insets: safeAreaInsets)
         }
-        .padding(.horizontal, insets: safeAreaInsets)
         .background(Color(.listForeground))
 
         Divider()
@@ -63,12 +66,12 @@ struct OrderPaymentSection: View {
             TitleAndValueRow(title: Localization.shippingTotal, value: .content(viewModel.shippingTotal), selectionStyle: .highlight) {
                 shouldShowShippingLineDetails = true
             }
+            .buttonStyle(BaseButtonRowStyle())
         } else {
             Button(Localization.addShipping) {
                 shouldShowShippingLineDetails = true
             }
-            .buttonStyle(PlusButtonStyle())
-            .padding()
+            .buttonStyle(PlusButtonRowStyle())
         }
     }
 
@@ -77,12 +80,12 @@ struct OrderPaymentSection: View {
             TitleAndValueRow(title: Localization.feesTotal, value: .content(viewModel.feesTotal), selectionStyle: .highlight) {
                 shouldShowFeeLineDetails = true
             }
+            .buttonStyle(BaseButtonRowStyle())
         } else {
             Button(Localization.addFee) {
                 shouldShowFeeLineDetails = true
             }
-            .buttonStyle(PlusButtonStyle())
-            .padding()
+            .buttonStyle(PlusButtonRowStyle())
         }
     }
 }
