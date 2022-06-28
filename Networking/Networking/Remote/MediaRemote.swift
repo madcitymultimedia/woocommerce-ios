@@ -24,6 +24,10 @@ public protocol MediaRemoteProtocol {
                          productID: Int64,
                          mediaID: Int64,
                          completion: @escaping (Result<Media, Error>) -> Void)
+    func updateProductIDToWordPressSite(siteID: Int64,
+                                        productID: Int64,
+                                        mediaID: Int64,
+                                        completion: @escaping (Result<WordPressMedia, Error>) -> Void)
 }
 
 /// Media: Remote Endpoints
@@ -190,6 +194,21 @@ public class MediaRemote: Remote, MediaRemoteProtocol {
         let path = "sites/\(siteID)/media/\(mediaID)"
         let request = DotcomRequest(wordpressApiVersion: .mark1_1, method: .post, path: path, parameters: formParameters)
         let mapper = MediaMapper()
+
+        enqueue(request, mapper: mapper, completion: completion)
+    }
+
+    public func updateProductIDToWordPressSite(siteID: Int64,
+                                               productID: Int64,
+                                               mediaID: Int64,
+                                               completion: @escaping (Result<WordPressMedia, Error>) -> Void) {
+        let parameters: [String: String] = [
+            ParameterKey.wordPressMediaPostID: "\(productID)",
+            ParameterKey.fieldsWordPressSite: ParameterValue.wordPressMediaFields,
+        ]
+        let path = "sites/\(siteID)/media/\(mediaID)"
+        let request = DotcomRequest(wordpressApiVersion: .wpMark2, method: .post, path: path, parameters: parameters)
+        let mapper = WordPressMediaMapper()
 
         enqueue(request, mapper: mapper, completion: completion)
     }
