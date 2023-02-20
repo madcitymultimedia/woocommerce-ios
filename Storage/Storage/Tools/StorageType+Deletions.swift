@@ -30,6 +30,16 @@ public extension StorageType {
         }
     }
 
+    /// Deletes single stored Product Variation for the provided siteID and productVariationID.
+    ///
+    func deleteProductVariation(siteID: Int64, productVariationID: Int64) {
+        guard let productVariation = loadProductVariation(siteID: siteID, productVariationID: productVariationID) else {
+            return
+        }
+
+        deleteObject(productVariation)
+    }
+
     /// Deletes all of the stored Product Shipping Class models for the provided siteID.
     ///
     func deleteProductShippingClasses(siteID: Int64) {
@@ -97,6 +107,75 @@ public extension StorageType {
         }
         for review in productReviews {
             deleteObject(review)
+        }
+    }
+
+    // MARK: - Coupons
+
+    /// Deletes all of the stored Coupons for the provided siteID.
+    ///
+    func deleteCoupons(siteID: Int64) {
+        let coupons = loadAllCoupons(siteID: siteID)
+        for coupon in coupons {
+            deleteObject(coupon)
+        }
+    }
+
+    /// Deletes the stored Coupon with the given couponID for the provided siteID.
+    ///
+    func deleteCoupon(siteID: Int64, couponID: Int64) {
+        if let coupon = loadCoupon(siteID: siteID, couponID: couponID) {
+            deleteObject(coupon)
+        }
+    }
+
+    /// Deletes all of the stored `AddOnGroups` for a `siteID` that are not included in the provided `activeGroupIDs` array.
+    ///
+    func deleteStaleAddOnGroups(siteID: Int64, activeGroupIDs: [Int64]) {
+        let staleGroups = loadAddOnGroups(siteID: siteID).filter { !activeGroupIDs.contains($0.groupID) }
+        staleGroups.forEach {
+            deleteObject($0)
+        }
+    }
+
+    /// Deletes all of the stored `SitePlugin` entities with a specified `siteID` whose name is not included in `installedPluginNames` array.
+    ///
+    func deleteStalePlugins(siteID: Int64, installedPluginNames: [String]) {
+        let plugins = loadPlugins(siteID: siteID).filter {
+            !installedPluginNames.contains($0.name)
+        }
+        plugins.forEach {
+            deleteObject($0)
+        }
+    }
+
+    /// Deletes all of the stored SystemPlugins for the provided siteID whose name is not included in `currentSystemPlugins` array
+    ///
+    func deleteStaleSystemPlugins(siteID: Int64, currentSystemPlugins: [String]) {
+        let systemPlugins = loadSystemPlugins(siteID: siteID).filter {
+            !currentSystemPlugins.contains($0.name)
+        }
+        systemPlugins.forEach {
+            deleteObject($0)
+        }
+    }
+
+    // MARK: - InboxNotes
+
+    /// Deletes all of the stored Inbox Notes for the provided siteID.
+    ///
+    func deleteInboxNotes(siteID: Int64) {
+        let inboxNotes = loadAllInboxNotes(siteID: siteID)
+        for inboxNote in inboxNotes {
+            deleteObject(inboxNote)
+        }
+    }
+
+    /// Deletes the stored InboxNote with the given id for the provided siteID.
+    ///
+    func deleteInboxNote(siteID: Int64, id: Int64) {
+        if let inboxNote = loadInboxNote(siteID: siteID, id: id) {
+            deleteObject(inboxNote)
         }
     }
 }

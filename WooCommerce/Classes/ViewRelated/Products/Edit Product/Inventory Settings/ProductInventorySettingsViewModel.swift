@@ -1,5 +1,5 @@
+import Combine
 import Yosemite
-import Observables
 
 /// Provides data needed for inventory settings.
 ///
@@ -7,7 +7,7 @@ protocol ProductInventorySettingsViewModelOutput {
     typealias Section = ProductInventorySettingsViewController.Section
 
     /// Observable table view sections.
-    var sections: Observable<[Section]> { get }
+    var sections: AnyPublisher<[Section], Never> { get }
 
     /// Potential error from input changes.
     var error: ProductUpdateError? { get }
@@ -23,7 +23,7 @@ protocol ProductInventorySettingsViewModelOutput {
     var soldIndividually: Bool? { get }
 
     // Editable data - manage stock enabled.
-    var stockQuantity: Int64? { get }
+    var stockQuantity: Decimal? { get }
     var backordersSetting: ProductBackordersSetting? { get }
 
     // Editable data - manage stock disabled.
@@ -69,7 +69,7 @@ final class ProductInventorySettingsViewModel: ProductInventorySettingsViewModel
     private(set) var soldIndividually: Bool?
 
     // Editable data - manage stock enabled.
-    private(set) var stockQuantity: Int64?
+    private(set) var stockQuantity: Decimal?
     private(set) var backordersSetting: ProductBackordersSetting?
 
     // Editable data - manage stock disabled.
@@ -79,10 +79,10 @@ final class ProductInventorySettingsViewModel: ProductInventorySettingsViewModel
 
     /// Table Sections to be rendered
     ///
-    var sections: Observable<[Section]> {
-        sectionsSubject
+    var sections: AnyPublisher<[Section], Never> {
+        $sectionsSubject.eraseToAnyPublisher()
     }
-    private let sectionsSubject: BehaviorSubject<[Section]> = BehaviorSubject<[Section]>([])
+    @Published private var sectionsSubject: [Section] = []
 
     private(set) var error: ProductUpdateError?
 
@@ -169,7 +169,7 @@ extension ProductInventorySettingsViewModel: ProductInventorySettingsActionHandl
         guard let stockQuantity = stockQuantity else {
             return
         }
-        self.stockQuantity = Int64(stockQuantity)
+        self.stockQuantity = Decimal(string: stockQuantity)
     }
 
     func handleBackordersSettingChange(_ backordersSetting: ProductBackordersSetting?) {
@@ -253,7 +253,7 @@ private extension ProductInventorySettingsViewModel {
                 createSKUSection()
             ]
         }
-        sectionsSubject.send(sections)
+        sectionsSubject = sections
     }
 
     func createSKUSection() -> Section {

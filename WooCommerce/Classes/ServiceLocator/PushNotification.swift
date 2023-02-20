@@ -9,10 +9,19 @@ struct PushNotification {
     /// The `note_id` value received from the Remote Notification's `userInfo`.
     ///
     let noteID: Int
+    /// The `blog` value received from the Remote Notification's `userInfo`.
+    ///
+    let siteID: Int
     /// The `type` value received from the Remote Notification's `userInfo`.
     ///
     let kind: Note.Kind
-    /// The `alert` value received from the Remote Notification's `userInfo`.
+    /// The `alert.title` value received from the Remote Notification's `userInfo`.
     ///
-    let message: String
+    let title: String
+    /// The `alert.subtitle` value received from the Remote Notification's `userInfo`.
+    ///
+    let subtitle: String?
+    /// The `alert.message` value received from the Remote Notification's `userInfo`.
+    ///
+    let message: String?
 }

@@ -34,14 +34,7 @@ private extension LicensesViewController {
     /// Set the title and back button.
     ///
     func configureNavigation() {
-        title = NSLocalizedString("Licenses", comment: "Licenses (information page title)")
-        // Don't show the About title in the next-view's back button
-        let backButton = UIBarButtonItem(title: String(),
-                                         style: .plain,
-                                         target: nil,
-                                         action: nil)
-
-        navigationItem.backBarButtonItem = backButton
+        title = NSLocalizedString("Third Party Licenses", comment: "Software Licenses (information page title)")
     }
 
     /// Setup the main view
@@ -72,12 +65,10 @@ extension LicensesViewController: WKNavigationDelegate {
             return
         }
 
-        // Open the link in a modal SFSafariViewController instead of the webview displaying the
+        // Use WebviewHelper instead of the webview displaying the
         // licenses HTML — we don't want to build another browser here
         if let url = navigationAction.request.url {
-            let safariViewController = SFSafariViewController(url: url)
-            safariViewController.modalPresentationStyle = .pageSheet
-            present(safariViewController, animated: true, completion: nil)
+            WebviewHelper.launch(url, with: self)
         }
         decisionHandler(.cancel)
     }

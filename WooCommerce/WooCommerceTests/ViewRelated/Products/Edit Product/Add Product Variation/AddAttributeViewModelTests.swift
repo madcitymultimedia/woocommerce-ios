@@ -23,13 +23,13 @@ final class AddAttributeViewModelTests: XCTestCase {
 
     func test_it_transitions_to_synced_state_after_synchronizing_attributes() throws {
         // Given
-        let product = MockProduct().product()
+        let product = Product.fake()
         let viewModel = AddAttributeViewModel(storesManager: storesManager, product: product)
         storesManager.productAttributeResponse = .success([])
 
         // When
         viewModel.performFetch()
-        let result: Bool = try waitFor { promise in
+        let result: Bool = waitFor { promise in
             viewModel.observeProductAttributesListStateChanges { state in
                 if state == .synced {
                     promise(true)
@@ -44,7 +44,7 @@ final class AddAttributeViewModelTests: XCTestCase {
 
     func test_it_transitions_to_failed_state_after_synchronizing_attributes_errors() throws {
         // Given
-        let product = MockProduct().product()
+        let product = Product.fake()
         let viewModel = AddAttributeViewModel(storesManager: storesManager, product: product)
         storesManager.productAttributeResponse = .success([])
 
@@ -53,7 +53,7 @@ final class AddAttributeViewModelTests: XCTestCase {
 
         // When
         viewModel.performFetch()
-        let result: Bool = try waitFor { promise in
+        let result: Bool = waitFor { promise in
             viewModel.observeProductAttributesListStateChanges { state in
                 if state == .failed {
                     promise(true)
@@ -68,7 +68,7 @@ final class AddAttributeViewModelTests: XCTestCase {
 
     func test_handle_valid_new_attribute_name() {
         // Given
-        let product = MockProduct().product()
+        let product = Product.fake()
         let viewModel = AddAttributeViewModel(storesManager: storesManager, product: product)
 
 
@@ -82,7 +82,7 @@ final class AddAttributeViewModelTests: XCTestCase {
 
     func test_handle_invalid_new_attribute_name() {
         // Given
-        let product = MockProduct().product()
+        let product = Product.fake()
         let viewModel = AddAttributeViewModel(storesManager: storesManager, product: product)
 
 

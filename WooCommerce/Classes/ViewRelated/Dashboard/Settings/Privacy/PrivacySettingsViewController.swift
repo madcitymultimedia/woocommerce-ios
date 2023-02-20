@@ -70,19 +70,17 @@ private extension PrivacySettingsViewController {
 
     func loadAccountSettings(completion: (()-> Void)? = nil) {
         guard let defaultAccount = ServiceLocator.stores.sessionManager.defaultAccount else {
+            completion?()
             return
         }
 
         let userID = defaultAccount.userID
 
-        let action = AccountAction.synchronizeAccountSettings(userID: userID) { [weak self] (accountSettings, error) in
-            guard let self = self,
-                let accountSettings = accountSettings else {
-                    return
+        let action = AccountAction.synchronizeAccountSettings(userID: userID) { [weak self] result in
+            if case let .success(accountSettings) = result {
+                // Switch is off when opting out of Tracks
+                self?.collectInfo = !accountSettings.tracksOptOut
             }
-
-            // Switch is off when opting out of Tracks
-            self.collectInfo = !accountSettings.tracksOptOut
 
             completion?()
         }
@@ -97,14 +95,6 @@ private extension PrivacySettingsViewController {
 
     func configureNavigation() {
         title = NSLocalizedString("Privacy Settings", comment: "Privacy settings screen title")
-
-        // Don't show the Settings title in the next-view's back button
-        let backButton = UIBarButtonItem(title: String(),
-                                         style: .plain,
-                                         target: nil,
-                                         action: nil)
-
-        navigationItem.backBarButtonItem = backButton
     }
 
     func configureMainView() {
@@ -180,7 +170,7 @@ private extension PrivacySettingsViewController {
     func configureShareInfo(cell: BasicTableViewCell) {
         // To align the 'Read privacy policy' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString(
             "Share information with our analytics tool about your use of services while logged in to your WordPress.com account.",
             comment: "Settings > Privacy Settings > collect info section. Explains what the 'collect information' toggle is collecting"
@@ -191,7 +181,7 @@ private extension PrivacySettingsViewController {
     func configureCookiePolicy(cell: BasicTableViewCell) {
         // To align the 'Learn more' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString("Learn more", comment: "Settings > Privacy Settings. A text link to the cookie policy.")
         cell.textLabel?.textColor = .accent
     }
@@ -199,7 +189,7 @@ private extension PrivacySettingsViewController {
     func configurePrivacyInfo(cell: BasicTableViewCell) {
         // To align the 'Read privacy policy' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString(
             "This information helps us improve our products, make marketing to you more relevant, personalize your WordPress.com experience, " +
             "and more as detailed in our privacy policy.",
@@ -211,7 +201,7 @@ private extension PrivacySettingsViewController {
     func configurePrivacyPolicy(cell: BasicTableViewCell) {
         // To align the 'Read privacy policy' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString(
             "Read privacy policy",
             comment: "Settings > Privacy Settings > privacy policy info section. A text link to the privacy policy."
@@ -222,7 +212,7 @@ private extension PrivacySettingsViewController {
     func configureCookieInfo(cell: BasicTableViewCell) {
         // To align the 'Read privacy policy' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString(
             "We use other tracking tools, including some from third parties. Read about these and how to control them.",
             comment: "Settings > Privacy Settings > cookie info section. Explains what we do with the cookie information we collect."
@@ -251,7 +241,7 @@ private extension PrivacySettingsViewController {
     func configureCrashInfo(cell: BasicTableViewCell) {
         // To align the 'Read privacy policy' cell to the others, add an "invisible" image.
         cell.imageView?.image = .invisibleImage
-        cell.imageView?.tintColor = .listForeground
+        cell.imageView?.tintColor = .listForeground(modal: false)
         cell.textLabel?.text = NSLocalizedString(
             "To help us improve the app’s performance and fix the occasional bug, enable automatic crash reports.",
             comment: "Settings > Privacy Settings > report crashes section. Explains what the 'report crashes' toggle does"
@@ -274,12 +264,9 @@ private extension PrivacySettingsViewController {
 
         let userID = defaultAccount.userID
 
-        let action = AccountAction.updateAccountSettings(userID: userID, tracksOptOut: userOptedOut) { error in
-
-            guard let _ = error else {
+        let action = AccountAction.updateAccountSettings(userID: userID, tracksOptOut: userOptedOut) { result in
+            if case .success = result {
                 ServiceLocator.analytics.setUserHasOptedOut(userOptedOut)
-
-                return
             }
         }
         ServiceLocator.stores.dispatch(action)
@@ -296,17 +283,13 @@ private extension PrivacySettingsViewController {
     /// Display Automattic's Cookie Policy web page
     ///
     func presentCookiePolicyWebView() {
-        let safariViewController = SFSafariViewController(url: WooConstants.URLs.cookie.asURL())
-        safariViewController.modalPresentationStyle = .pageSheet
-        present(safariViewController, animated: true, completion: nil)
+        WebviewHelper.launch(WooConstants.URLs.cookie.asURL(), with: self)
     }
 
     /// Display Automattic's Privacy Policy web page
     ///
     func presentPrivacyPolicyWebView() {
-        let safariViewController = SFSafariViewController(url: WooConstants.URLs.privacy.asURL())
-        safariViewController.modalPresentationStyle = .pageSheet
-        present(safariViewController, animated: true, completion: nil)
+        WebviewHelper.launch(WooConstants.URLs.privacy.asURL(), with: self)
     }
 }
 

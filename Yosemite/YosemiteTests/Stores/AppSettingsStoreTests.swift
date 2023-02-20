@@ -35,6 +35,10 @@ final class AppSettingsStoreTests: XCTestCase {
     ///
     private var fileStorage: MockInMemoryStorage?
 
+    /// Mock General Settings Storage: Load data in memory
+    ///
+    private var generalAppSettings: GeneralAppSettingsStorage?
+
     /// Test subject
     ///
     private var subject: AppSettingsStore?
@@ -44,7 +48,8 @@ final class AppSettingsStoreTests: XCTestCase {
         dispatcher = Dispatcher()
         storageManager = MockStorageManager()
         fileStorage = MockInMemoryStorage()
-        subject = AppSettingsStore(dispatcher: dispatcher!, storageManager: storageManager!, fileStorage: fileStorage!)
+        generalAppSettings = GeneralAppSettingsStorage(fileStorage: fileStorage!)
+        subject = AppSettingsStore(dispatcher: dispatcher!, storageManager: storageManager!, fileStorage: fileStorage!, generalAppSettings: generalAppSettings!)
         subject?.selectedProvidersURL = TestConstants.fileURL!
         subject?.customSelectedProvidersURL = TestConstants.customFileURL!
     }
@@ -53,6 +58,7 @@ final class AppSettingsStoreTests: XCTestCase {
         dispatcher = nil
         storageManager = nil
         fileStorage = nil
+        generalAppSettings = nil
         subject = nil
         super.tearDown()
     }
@@ -192,8 +198,8 @@ final class AppSettingsStoreTests: XCTestCase {
         // Given
         let date = Date(timeIntervalSince1970: 100)
 
-        let (existingSettings, feedback) = createAppSettingAndGeneralFeedback(instalationDate: Date(timeIntervalSince1970: 4_810),
-                                                                              feedbackSatus: .given(Date(timeIntervalSince1970: 9_971_311)))
+        let (existingSettings, feedback) = createAppSettingAndGeneralFeedback(installationDate: Date(timeIntervalSince1970: 4_810),
+                                                                              feedbackStatus: .given(Date(timeIntervalSince1970: 9_971_311)))
         try fileStorage?.write(existingSettings, to: expectedGeneralAppSettingsFileURL)
 
         // When
@@ -227,8 +233,9 @@ final class AppSettingsStoreTests: XCTestCase {
         // Create our own infrastructure so we can inject `PListFileStorage`.
         let fileStorage = PListFileStorage()
         let storageManager = MockStorageManager()
+        let generalAppSettings = GeneralAppSettingsStorage(fileStorage: fileStorage)
         let dispatcher = Dispatcher()
-        let store = AppSettingsStore(dispatcher: dispatcher, storageManager: storageManager, fileStorage: fileStorage)
+        let store = AppSettingsStore(dispatcher: dispatcher, storageManager: storageManager, fileStorage: fileStorage, generalAppSettings: generalAppSettings)
 
         if FileManager.default.fileExists(atPath: expectedGeneralAppSettingsFileURL.path) {
             try fileStorage.deleteFile(at: expectedGeneralAppSettingsFileURL)
@@ -304,8 +311,8 @@ final class AppSettingsStoreTests: XCTestCase {
         // Given
         let date = Date(timeIntervalSince1970: 300)
 
-        let (existingSettings, feedback) = createAppSettingAndGeneralFeedback(instalationDate: Date(timeIntervalSince1970: 1),
-                                                                              feedbackSatus: .given(Date(timeIntervalSince1970: 999)))
+        let (existingSettings, feedback) = createAppSettingAndGeneralFeedback(installationDate: Date(timeIntervalSince1970: 1),
+                                                                              feedbackStatus: .given(Date(timeIntervalSince1970: 999)))
 
         try fileStorage?.write(existingSettings, to: expectedGeneralAppSettingsFileURL)
 
@@ -352,15 +359,15 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(shouldBeVisibleResult).get())
     }
 
-    func test_loadFeedbackVisibility_for_productsM4_returns_true_after_marking_it_as_pending() throws {
+    func test_loadFeedbackVisibility_for_ordersCreation_returns_true_after_marking_it_as_pending() throws {
         // Given
         try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
-        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .productsM4, status: .pending) { _ in }
+        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .ordersCreation, status: .pending) { _ in }
         subject?.onAction(updateAction)
 
         // When
         var visibilityResult: Result<Bool, Error>?
-        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .productsM4) { result in
+        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .ordersCreation) { result in
             visibilityResult = result
         }
         subject?.onAction(queryAction)
@@ -372,15 +379,15 @@ final class AppSettingsStoreTests: XCTestCase {
 
     }
 
-    func test_loadFeedbackVisibility_for_productsM4_returns_false_after_marking_it_as_dismissed() throws {
+    func test_loadFeedbackVisibility_for_ordersCreation_returns_false_after_marking_it_as_dismissed() throws {
         // Given
         try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
-        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .productsM4, status: .dismissed) { _ in }
+        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .ordersCreation, status: .dismissed) { _ in }
         subject?.onAction(updateAction)
 
         // When
         var visibilityResult: Result<Bool, Error>?
-        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .productsM4) { result in
+        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .ordersCreation) { result in
             visibilityResult = result
         }
         subject?.onAction(queryAction)
@@ -392,15 +399,15 @@ final class AppSettingsStoreTests: XCTestCase {
 
     }
 
-    func test_loadFeedbackVisibility_for_productsM4_returns_false_after_marking_it_as_given() throws {
+    func test_loadFeedbackVisibility_for_ordersCreation_returns_false_after_marking_it_as_given() throws {
         // Given
         try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
-        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .productsM4, status: .given(Date())) { _ in }
+        let updateAction = AppSettingsAction.updateFeedbackStatus(type: .ordersCreation, status: .given(Date())) { _ in }
         subject?.onAction(updateAction)
 
         // When
         var visibilityResult: Result<Bool, Error>?
-        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .productsM4) { result in
+        let queryAction = AppSettingsAction.loadFeedbackVisibility(type: .ordersCreation) { result in
             visibilityResult = result
         }
         subject?.onAction(queryAction)
@@ -409,8 +416,614 @@ final class AppSettingsStoreTests: XCTestCase {
         let result = try XCTUnwrap(visibilityResult)
         XCTAssertTrue(result.isSuccess)
         XCTAssertFalse(try result.get())
+    }
+
+    func test_loadOrderAddOnsSwitchState_returns_false_on_new_generalAppSettings() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.loadOrderAddOnsSwitchState { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertFalse(isEnabled)
+    }
+
+    func test_loadOrderAddOnsSwitchState_returns_true_after_updating_switch_state_as_true() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+        let updateAction = AppSettingsAction.setOrderAddOnsFeatureSwitchState(isEnabled: true, onCompletion: { _ in })
+        subject?.onAction(updateAction)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.loadOrderAddOnsSwitchState { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertTrue(isEnabled)
+    }
+
+    func test_loadJetpackBenefitsBannerVisibility_returns_true_on_new_generalAppSettings() throws {
+        // Given
+        // Deletes any pre-existing app settings.
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // GMT - Sunday, November 28, 2021 1:25:24 PM
+        let currentTime = Date(timeIntervalSince1970: 1638105924)
+        let calendar = Calendar(identifier: .gregorian)
+
+        // When
+        let isVisible: Bool = waitFor { promise in
+            let action = AppSettingsAction.loadJetpackBenefitsBannerVisibility(currentTime: currentTime, calendar: calendar) { isVisible in
+                promise(isVisible)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        // The banner is visible if there are no pre-existing app settings.
+        XCTAssertTrue(isVisible)
+    }
+
+    func test_loadJetpackBenefitsBannerVisibility_returns_true_after_setting_last_dismissed_date_exactly_five_days_ago_without_dst() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // GMT - Tuesday, November 23, 2021 1:25:24 PM
+        let lastDismissedTime = Date(timeIntervalSince1970: 1637673924)
+        // GMT - Sunday, November 28, 2021 1:25:24 PM - exactly five days after the last dismissed date without DST
+        let currentTime = Date(timeIntervalSince1970: 1638105924)
+        let calendar: Calendar = {
+            var calendar = Calendar(identifier: .gregorian)
+            guard let timeZoneWithoutDaylightSavingTime = TimeZone(identifier: "Asia/Taipei") else {
+                XCTFail("Unexpected time zone.")
+                return calendar
+            }
+            calendar.timeZone = timeZoneWithoutDaylightSavingTime
+            return calendar
+        }()
+
+        let updateAction = AppSettingsAction.setJetpackBenefitsBannerLastDismissedTime(time: lastDismissedTime)
+        subject?.onAction(updateAction)
+
+        // When
+        let isVisible: Bool = waitFor { promise in
+            let action = AppSettingsAction.loadJetpackBenefitsBannerVisibility(currentTime: currentTime, calendar: calendar) { isVisible in
+                promise(isVisible)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(isVisible)
+    }
+
+    /// Tests an edge case where the time interval since the last dismissed date is less than 5 24-hour days, but is exactly 5 days on calendar with daylight
+    /// saving time.
+    func test_loadJetpackBenefitsBannerVisibility_returns_false_after_setting_last_dismissed_date_exactly_five_24hr_days_ago() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // America/New York (EDT) - November 03, 2021 09:43:17 AM
+        let lastDismissedTime = Date(timeIntervalSince1970: 1635946997)
+        // America/New York (EST) - November 08, 2021 08:43:17 AM - exactly five 24-hour days after the last dismissed date.
+        // But with daylight saving time in America/New York, it is still less than five days.
+        let currentTime = Date(timeIntervalSince1970: 1636378997)
+        let calendar: Calendar = {
+            var calendar = Calendar(identifier: .gregorian)
+            guard let timeZoneWithDaylightSavingTime = TimeZone(identifier: "America/New_York") else {
+                XCTFail("Unexpected time zone.")
+                return calendar
+            }
+            calendar.timeZone = timeZoneWithDaylightSavingTime
+            return calendar
+        }()
+
+        let updateAction = AppSettingsAction.setJetpackBenefitsBannerLastDismissedTime(time: lastDismissedTime)
+        subject?.onAction(updateAction)
+
+        // When
+        let isVisible: Bool = waitFor { promise in
+            let action = AppSettingsAction.loadJetpackBenefitsBannerVisibility(currentTime: currentTime, calendar: calendar) { isVisible in
+                promise(isVisible)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(isVisible)
+    }
+
+    func test_loadJetpackBenefitsBannerVisibility_returns_false_after_setting_last_dismissed_date_less_than_five_days_ago() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // GMT - Tuesday, November 23, 2021 1:25:24 PM
+        let lastDismissedTime = Date(timeIntervalSince1970: 1637673924)
+        // GMT - Sunday, November 28, 2021 1:25:23 PM - exactly 1 second less than five days after the last dismissed date without DST
+        let currentTime = Date(timeIntervalSince1970: 1638105923)
+        let calendar: Calendar = {
+            var calendar = Calendar(identifier: .gregorian)
+            guard let timeZoneWithoutDaylightSavingTime = TimeZone(identifier: "Asia/Taipei") else {
+                XCTFail("Unexpected time zone.")
+                return calendar
+            }
+            calendar.timeZone = timeZoneWithoutDaylightSavingTime
+            return calendar
+        }()
+
+        let updateAction = AppSettingsAction.setJetpackBenefitsBannerLastDismissedTime(time: lastDismissedTime)
+        subject?.onAction(updateAction)
+
+        // When
+        let isVisible: Bool = waitFor { promise in
+            let action = AppSettingsAction.loadJetpackBenefitsBannerVisibility(currentTime: currentTime, calendar: calendar) { isVisible in
+                promise(isVisible)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(isVisible)
+    }
+
+    func test_loadCouponManagementFeatureSwitchState_returns_false_on_new_generalAppSettings() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.loadCouponManagementFeatureSwitchState { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertFalse(isEnabled)
+    }
+
+    func test_loadCouponManagementFeatureSwitchState_returns_true_after_updating_switch_state_to_true() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+        let updateAction = AppSettingsAction.setCouponManagementFeatureSwitchState(isEnabled: true, onCompletion: { _ in })
+        subject?.onAction(updateAction)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.loadCouponManagementFeatureSwitchState { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertTrue(isEnabled)
+    }
+
+    // MARK: - General Store Settings
+
+    func test_saving_isTelemetryAvailable_works_correctly() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let initialTime = Date(timeIntervalSince1970: 100)
+
+        let existingSettings = GeneralStoreSettingsBySite(storeSettingsBySite: [siteID: GeneralStoreSettings(isTelemetryAvailable: true,
+                                                                                                             telemetryLastReportedTime: initialTime)])
+        try fileStorage?.write(existingSettings, to: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setTelemetryAvailability(siteID: siteID, isAvailable: false)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(false, settingsForSite?.isTelemetryAvailable)
+
+        // The other properties should be kept
+        XCTAssertEqual(initialTime, settingsForSite?.telemetryLastReportedTime)
+    }
+
+    func test_saving_isTelemetryAvailable_works_correctly_when_the_settings_file_does_not_exist() throws {
+        // Given
+        let siteID: Int64 = 1234
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setTelemetryAvailability(siteID: siteID, isAvailable: true)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(true, settingsForSite?.isTelemetryAvailable)
+    }
+
+    func test_saving_telemetryLastReportedTime_works_correctly() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let initialTime = Date(timeIntervalSince1970: 100)
+        let newTime = Date(timeIntervalSince1970: 500)
+
+        let existingSettings = GeneralStoreSettingsBySite(storeSettingsBySite: [siteID: GeneralStoreSettings(isTelemetryAvailable: true,
+                                                                                                             telemetryLastReportedTime: initialTime)])
+        try fileStorage?.write(existingSettings, to: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setTelemetryLastReportedTime(siteID: siteID, time: newTime)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(newTime, settingsForSite?.telemetryLastReportedTime)
+
+        // The other properties should be kept
+        XCTAssertEqual(true, settingsForSite?.isTelemetryAvailable)
+    }
+
+    func test_saving_telemetryLastReportedTime_works_correctly_when_the_settings_file_does_not_exist() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let newTime = Date(timeIntervalSince1970: 500)
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setTelemetryLastReportedTime(siteID: siteID, time: newTime)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(newTime, settingsForSite?.telemetryLastReportedTime)
+    }
+
+    func test_getTelemetryInfo_returns_correct_saved_data() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let initialTime = Date(timeIntervalSince1970: 100)
+
+        let existingSettings = GeneralStoreSettingsBySite(storeSettingsBySite: [siteID: GeneralStoreSettings(isTelemetryAvailable: true,
+                                                                                                             telemetryLastReportedTime: initialTime)])
+        try fileStorage?.write(existingSettings, to: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let data: (isAvailable: Bool, telemetryLastReportedTime: Date?) = waitFor { promise in
+            let action = AppSettingsAction.getTelemetryInfo(siteID: siteID) { isAvailable, telemetryLastReportedTime in
+                promise((isAvailable, telemetryLastReportedTime))
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(data.isAvailable)
+        XCTAssertEqual(initialTime, data.telemetryLastReportedTime)
+    }
+
+    func test_getTelemetryInfo_returns_correct_default_data() throws {
+        // Given
+        let siteID: Int64 = 1234
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let data: (isAvailable: Bool, telemetryLastReportedTime: Date?) = waitFor { promise in
+            let action = AppSettingsAction.getTelemetryInfo(siteID: siteID) { isAvailable, telemetryLastReportedTime in
+                promise((isAvailable, telemetryLastReportedTime))
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(data.isAvailable)
+        XCTAssertNil(data.telemetryLastReportedTime)
+    }
+
+    func test_simplePaymentsToggleTaxes_returns_correct_default_data() throws {
+        // Given
+        let siteID: Int64 = 1234
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getSimplePaymentsTaxesToggleState(siteID: siteID) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(try result.get())
+    }
+
+    func test_simplePaymentsToggleTaxes_returns_correct_saved_data() throws {
+        // Given
+        let siteID: Int64 = 1234
+
+        let action = AppSettingsAction.setSimplePaymentsTaxesToggleState(siteID: siteID, isOn: true) { _ in }
+        self.subject?.onAction(action)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getSimplePaymentsTaxesToggleState(siteID: siteID) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(try result.get())
+    }
+
+    func test_saving_preferredInPersonPaymentGateway_works_correctly() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let initialTime = Date(timeIntervalSince1970: 100)
+        let preferredGateway = "woocommerce-payments"
+
+        let existingSettings = GeneralStoreSettingsBySite(storeSettingsBySite: [siteID: GeneralStoreSettings(isTelemetryAvailable: true,
+                                                                                                             telemetryLastReportedTime: initialTime)])
+        try fileStorage?.write(existingSettings, to: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setPreferredInPersonPaymentGateway(siteID: siteID, gateway: preferredGateway)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(preferredGateway, settingsForSite?.preferredInPersonPaymentGateway)
+
+        // The other properties should be kept
+        XCTAssertEqual(initialTime, settingsForSite?.telemetryLastReportedTime)
+    }
+
+    func test_saving_preferredInPersonPaymentGateway_works_correctly_when_the_settings_file_does_not_exist() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let preferredGateway = "woocommerce-payments"
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setPreferredInPersonPaymentGateway(siteID: siteID, gateway: preferredGateway)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralStoreSettingsBySite = try XCTUnwrap(fileStorage?.data(for: expectedGeneralStoreSettingsFileURL))
+        let settingsForSite = savedSettings.storeSettingsBySite[siteID]
+
+        XCTAssertEqual(preferredGateway, settingsForSite?.preferredInPersonPaymentGateway)
 
     }
+
+    func test_resetGeneralStoreSettings_resets_all_settings() throws {
+        // Given
+        let siteID: Int64 = 1234
+        let initialTime = Date(timeIntervalSince1970: 100)
+
+        let existingSettings = GeneralStoreSettingsBySite(storeSettingsBySite: [siteID: GeneralStoreSettings(isTelemetryAvailable: true,
+                                                                                                             telemetryLastReportedTime: initialTime)])
+        try fileStorage?.write(existingSettings, to: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.resetGeneralStoreSettings
+        subject?.onAction(action)
+
+        // Then
+        XCTAssertEqual(true, fileStorage?.deleteIsHit)
+        let savedSettings: GeneralStoreSettingsBySite? = try fileStorage?.data(for: expectedGeneralStoreSettingsFileURL)
+        XCTAssertNil(savedSettings)
+    }
+}
+
+// MARK: - Feature Announcement Card Visibility
+
+extension AppSettingsStoreTests {
+
+    func test_setFeatureAnnouncementDismissed_for_campaign_when_remindAfterDays_is_nil_then_does_not_store_current_date() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+        // When
+        let action = AppSettingsAction.setFeatureAnnouncementDismissed(campaign: .upsellCardReaders, remindAfterDays: nil, onCompletion: nil)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralAppSettings? = try XCTUnwrap(fileStorage?.data(for: expectedGeneralAppSettingsFileURL))
+        XCTAssertNil(savedSettings)
+        guard let savedSettings else {
+            return
+        }
+        let savedDate: Date? = try XCTUnwrap( savedSettings.featureAnnouncementCampaignSettings[.upsellCardReaders]?.dismissedDate)
+        XCTAssertNil(savedDate)
+    }
+
+    func test_setFeatureAnnouncementDismissed_for_campaign_stores_current_date() throws {
+        // Given
+        let currentTime = Date()
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setFeatureAnnouncementDismissed(campaign: .upsellCardReaders, remindAfterDays: 0, onCompletion: nil)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralAppSettings = try XCTUnwrap(fileStorage?.data(for: expectedGeneralAppSettingsFileURL))
+
+        let actualDismissDate = try XCTUnwrap( savedSettings.featureAnnouncementCampaignSettings[.upsellCardReaders]?.dismissedDate)
+
+        XCTAssert(Calendar.current.isDate(actualDismissDate, inSameDayAs: currentTime))
+    }
+
+    func test_setFeatureAnnouncementDismissed_when_remindAfterDays_is_two_weeks_then_stores_reminder_date_is_two_weeks() throws {
+        // Given
+        let remindAfterDays = 14
+        let twoWeeksTime = Calendar.current.date(byAdding: .day, value: remindAfterDays, to: Date())!
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setFeatureAnnouncementDismissed(campaign: .upsellCardReaders, remindAfterDays: remindAfterDays, onCompletion: nil)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralAppSettings = try XCTUnwrap(fileStorage?.data(for: expectedGeneralAppSettingsFileURL))
+
+        let actualRemindAfter = try XCTUnwrap( savedSettings.featureAnnouncementCampaignSettings[.upsellCardReaders]?.remindAfter)
+
+        XCTAssert(Calendar.current.isDate(actualRemindAfter, inSameDayAs: twoWeeksTime))
+    }
+
+    func test_setFeatureAnnouncementDismissed_when_remindAfterDays_is_seven_days_stores_reminder_then_date_saved_date_is_one_week() throws {
+        // Given
+        let remindAfterDays = 7
+        let oneWeekTime = Calendar.current.date(byAdding: .day, value: remindAfterDays, to: Date())!
+
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setFeatureAnnouncementDismissed(campaign: .upsellCardReaders, remindAfterDays: remindAfterDays, onCompletion: nil)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralAppSettings = try XCTUnwrap(fileStorage?.data(for: expectedGeneralAppSettingsFileURL))
+
+        let actualRemindAfter = try XCTUnwrap( savedSettings.featureAnnouncementCampaignSettings[.upsellCardReaders]?.remindAfter)
+
+        XCTAssert(Calendar.current.isDate(actualRemindAfter, inSameDayAs: oneWeekTime))
+    }
+
+    func test_setFeatureAnnouncementDismissed_with_another_campaign_previously_dismissed_keeps_values_for_both() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralStoreSettingsFileURL)
+
+        let currentTime = Date()
+
+        let settings = createAppSettings(featureAnnouncementCampaignSettings: [.test: .init(dismissedDate: currentTime, remindAfter: nil)])
+        try fileStorage?.write(settings, to: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let action = AppSettingsAction.setFeatureAnnouncementDismissed(campaign: .upsellCardReaders, remindAfterDays: 0, onCompletion: nil)
+        subject?.onAction(action)
+
+        // Then
+        let savedSettings: GeneralAppSettings = try XCTUnwrap(fileStorage?.data(for: expectedGeneralAppSettingsFileURL))
+
+        let actualDismissDate = try XCTUnwrap( savedSettings.featureAnnouncementCampaignSettings[.upsellCardReaders]?.dismissedDate)
+
+        XCTAssert(Calendar.current.isDate(actualDismissDate, inSameDayAs: currentTime))
+
+        let otherCampaignDismissDate = try XCTUnwrap(savedSettings.featureAnnouncementCampaignSettings[.test]?.dismissedDate)
+
+        assertEqual(currentTime, otherCampaignDismissDate)
+    }
+
+    func test_getFeatureAnnouncementVisibility_without_stored_setting_calls_completion_with_visibility_true() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getFeatureAnnouncementVisibility(campaign: .upsellCardReaders) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertTrue(isEnabled)
+    }
+
+    func test_getFeatureAnnouncementVisibility_with_stored_dismissDate_and_no_remindAfter_calls_completion_with_visibility_false() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+        let date = Date(timeIntervalSince1970: 100)
+
+        let settings = createAppSettings(featureAnnouncementCampaignSettings: [.upsellCardReaders: .init(dismissedDate: date, remindAfter: nil)])
+        try fileStorage?.write(settings, to: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getFeatureAnnouncementVisibility(campaign: .upsellCardReaders) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertFalse(isEnabled)
+    }
+
+    func test_getFeatureAnnouncementVisibility_with_stored_dismissDate_and_future_remindAfter_calls_completion_with_visibility_false() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+        let dismissedDate = Date()
+        let oneMinute = Calendar.current.date(byAdding: .minute, value: 1, to: dismissedDate)
+
+        let settings = createAppSettings(featureAnnouncementCampaignSettings: [.upsellCardReaders: .init(dismissedDate: dismissedDate, remindAfter: oneMinute)])
+        try fileStorage?.write(settings, to: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getFeatureAnnouncementVisibility(campaign: .upsellCardReaders) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertFalse(isEnabled)
+    }
+
+    func test_getFeatureAnnouncementVisibility_with_stored_dismissDate_and_past_remindAfter_calls_completion_with_visibility_true() throws {
+        // Given
+        try fileStorage?.deleteFile(at: expectedGeneralAppSettingsFileURL)
+        let dismissedDate = Calendar.current.date(byAdding: .minute, value: -2, to: Date())!
+        let oneMinuteAgo = Calendar.current.date(byAdding: .minute, value: -1, to: dismissedDate)
+
+        let campaignSettings = FeatureAnnouncementCampaignSettings(
+            dismissedDate: dismissedDate,
+            remindAfter: oneMinuteAgo)
+        let settings = createAppSettings(featureAnnouncementCampaignSettings: [.upsellCardReaders: campaignSettings])
+        try fileStorage?.write(settings, to: expectedGeneralAppSettingsFileURL)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = AppSettingsAction.getFeatureAnnouncementVisibility(campaign: .upsellCardReaders) { result in
+                promise(result)
+            }
+            self.subject?.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try result.get()
+        XCTAssertTrue(isEnabled)
+    }
+
 }
 
 // MARK: - Utils
@@ -421,9 +1034,39 @@ private extension AppSettingsStoreTests {
         return documents!.appendingPathComponent("general-app-settings.plist")
     }
 
-    func createAppSettingAndGeneralFeedback(instalationDate: Date?, feedbackSatus: FeedbackSettings.Status) -> (GeneralAppSettings, FeedbackSettings) {
-        let feedback = FeedbackSettings(name: .general, status: feedbackSatus)
-        let settings = GeneralAppSettings(installationDate: instalationDate, feedbacks: [feedback.name: feedback])
+    func createAppSettingAndGeneralFeedback(installationDate: Date?, feedbackStatus: FeedbackSettings.Status) -> (GeneralAppSettings, FeedbackSettings) {
+        let feedback = FeedbackSettings(name: .general, status: feedbackStatus)
+        let settings = GeneralAppSettings(
+            installationDate: installationDate,
+            feedbacks: [feedback.name: feedback],
+            isViewAddOnsSwitchEnabled: false,
+            isProductSKUInputScannerSwitchEnabled: false,
+            isCouponManagementSwitchEnabled: false,
+            isInAppPurchasesSwitchEnabled: false,
+            isTapToPayOnIPhoneSwitchEnabled: false,
+            knownCardReaders: [],
+            featureAnnouncementCampaignSettings: [:]
+        )
         return (settings, feedback)
+    }
+
+    func createAppSettings(featureAnnouncementCampaignSettings: [FeatureAnnouncementCampaign: FeatureAnnouncementCampaignSettings]) -> GeneralAppSettings {
+        let settings = GeneralAppSettings(
+            installationDate: Date(),
+            feedbacks: [:],
+            isViewAddOnsSwitchEnabled: false,
+            isProductSKUInputScannerSwitchEnabled: false,
+            isCouponManagementSwitchEnabled: false,
+            isInAppPurchasesSwitchEnabled: false,
+            isTapToPayOnIPhoneSwitchEnabled: false,
+            knownCardReaders: [],
+            featureAnnouncementCampaignSettings: featureAnnouncementCampaignSettings
+        )
+        return settings
+    }
+
+    var expectedGeneralStoreSettingsFileURL: URL {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+        return documents!.appendingPathComponent("general-store-settings.plist")
     }
 }

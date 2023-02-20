@@ -4,8 +4,7 @@ import Yosemite
 final class EditableProductVariationModel {
     let productVariation: ProductVariation
 
-    private let allAttributes: [ProductAttribute]
-    private lazy var variationName: String = generateName(variationAttributes: productVariation.attributes, allAttributes: allAttributes)
+    let allAttributes: [ProductAttribute]
 
     init(productVariation: ProductVariation, allAttributes: [ProductAttribute], parentProductSKU: String?) {
         self.allAttributes = allAttributes
@@ -15,22 +14,6 @@ final class EditableProductVariationModel {
         // As a workaround, we set a variation's SKU to nil if it has the same SKU as its parent product during initialization.
         let sku = parentProductSKU == productVariation.sku ? nil: productVariation.sku
         self.productVariation = productVariation.copy(sku: sku)
-    }
-}
-
-private extension EditableProductVariationModel {
-    func generateName(variationAttributes: [ProductVariationAttribute], allAttributes: [ProductAttribute]) -> String {
-        return allAttributes
-            .sorted(by: { (lhs, rhs) -> Bool in
-                lhs.position < rhs.position
-            })
-            .map { attribute in
-            guard let variationAttribute = variationAttributes.first(where: { $0.id == attribute.attributeID && $0.name == attribute.name }) else {
-                // The variation doesn't have an option set for this attribute, and we show "Any \(attributeName)" in this case.
-                return String.localizedStringWithFormat(Localization.anyAttributeFormat, attribute.name)
-            }
-            return variationAttribute.option
-        }.joined(separator: " - ")
     }
 }
 
@@ -44,7 +27,7 @@ extension EditableProductVariationModel: ProductFormDataModel, TaxClassRequestab
     }
 
     var name: String {
-        variationName
+        ProductVariationFormatter().generateName(for: productVariation, from: allAttributes)
     }
 
     var description: String? {
@@ -139,8 +122,12 @@ extension EditableProductVariationModel: ProductFormDataModel, TaxClassRequestab
         productVariation.stockStatus
     }
 
-    var stockQuantity: Int64? {
+    var stockQuantity: Decimal? {
         productVariation.stockQuantity
+    }
+
+    var hasIntegerStockQuantity: Bool {
+        productVariation.hasIntegerStockQuantity
     }
 
     var backordersKey: String {
@@ -179,6 +166,10 @@ extension EditableProductVariationModel: ProductFormDataModel, TaxClassRequestab
         []
     }
 
+    var hasAddOns: Bool {
+        false
+    }
+
     // Visibility logic
 
     func allowsMultipleImages() -> Bool {
@@ -192,13 +183,17 @@ extension EditableProductVariationModel: ProductFormDataModel, TaxClassRequestab
     func isShippingEnabled() -> Bool {
         productVariation.downloadable == false && productVariation.virtual == false
     }
+
+    var existsRemotely: Bool {
+        true // Variations are always created remotely
+    }
 }
 
 extension EditableProductVariationModel {
     /// Whether the variation is enabled based on its status.
     var isEnabled: Bool {
         switch status {
-        case .publish:
+        case .published:
             return true
         case .privateStatus:
             return false
@@ -217,12 +212,5 @@ extension EditableProductVariationModel {
 extension EditableProductVariationModel: Equatable {
     static func ==(lhs: EditableProductVariationModel, rhs: EditableProductVariationModel) -> Bool {
         return lhs.productVariation == rhs.productVariation
-    }
-}
-
-extension EditableProductVariationModel {
-    enum Localization {
-        static let anyAttributeFormat =
-            NSLocalizedString("Any %@", comment: "Format of a product varition attribute description where the attribute is set to any value.")
     }
 }

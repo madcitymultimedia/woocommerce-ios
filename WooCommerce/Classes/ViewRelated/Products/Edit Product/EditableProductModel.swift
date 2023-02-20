@@ -115,8 +115,12 @@ extension EditableProductModel: ProductFormDataModel, TaxClassRequestable {
         product.productStockStatus
     }
 
-    var stockQuantity: Int64? {
+    var stockQuantity: Decimal? {
         product.stockQuantity
+    }
+
+    var hasIntegerStockQuantity: Bool {
+        product.hasIntegerStockQuantity
     }
 
     var backordersKey: String {
@@ -151,6 +155,10 @@ extension EditableProductModel: ProductFormDataModel, TaxClassRequestable {
         product.crossSellIDs
     }
 
+    var hasAddOns: Bool {
+        product.addOns.isNotEmpty
+    }
+
     func isStockStatusEnabled() -> Bool {
         // Only a variable product's stock status is not editable.
         productType != .variable
@@ -168,6 +176,24 @@ extension EditableProductModel: ProductFormDataModel, TaxClassRequestable {
 
     func isShippingEnabled() -> Bool {
         product.downloadable == false && product.virtual == false
+    }
+
+    var existsRemotely: Bool {
+        product.existsRemotely
+    }
+
+    /// Helper to determine if a product model is empty.
+    /// We consider it as empty if its underlying product matches the `ProductFactory.createNewProduct` output.
+    /// Additionally we don't take dates into consideration as we don't control their value when creating a product.
+    ///
+    func isEmpty() -> Bool {
+        guard let emptyProduct = ProductFactory().createNewProduct(type: productType, isVirtual: virtual, siteID: siteID) else {
+            return false
+        }
+
+        let commonDate = Date()
+        return emptyProduct.copy(date: commonDate, dateCreated: commonDate, dateModified: commonDate, dateOnSaleStart: commonDate, dateOnSaleEnd: commonDate) ==
+               product.copy(date: commonDate, dateCreated: commonDate, dateModified: commonDate, dateOnSaleStart: commonDate, dateOnSaleEnd: commonDate)
     }
 }
 

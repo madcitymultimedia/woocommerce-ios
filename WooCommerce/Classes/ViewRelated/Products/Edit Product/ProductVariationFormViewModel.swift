@@ -1,13 +1,14 @@
+import Combine
 import Yosemite
-import Observables
 
 /// Provides data for product form UI on a `ProductVariation`, and handles product editing actions.
 final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
+
     typealias ProductModel = EditableProductVariationModel
 
     /// Emits product variation on change.
-    var observableProduct: Observable<EditableProductVariationModel> {
-        productVariationSubject
+    var observableProduct: AnyPublisher<EditableProductVariationModel, Never> {
+        productVariationSubject.eraseToAnyPublisher()
     }
 
     /// The latest product variation including potential edits.
@@ -15,10 +16,23 @@ final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
         productVariation
     }
 
-    /// Emits a boolean of whether the product variation has unsaved changes for remote update.
-    var isUpdateEnabled: Observable<Bool> {
-        isUpdateEnabledSubject
+    /// The original product variation.
+    var originalProductModel: EditableProductVariationModel {
+        originalProductVariation
     }
+
+    /// Emits a boolean of whether the product variation has unsaved changes for remote update.
+    var isUpdateEnabled: AnyPublisher<Bool, Never> {
+        isUpdateEnabledSubject.eraseToAnyPublisher()
+    }
+
+    /// The product variation ID
+    var productionVariationID: Int64? {
+        productVariation.productVariation.productVariationID
+    }
+
+    /// Emits a void value informing when there is a new variation price state available
+    var newVariationsPrice: AnyPublisher<Void, Never> = PassthroughSubject<Void, Never>().eraseToAnyPublisher()
 
     /// Creates actions available on the bottom sheet.
     private(set) var actionsFactory: ProductFormActionsFactoryProtocol
@@ -32,10 +46,10 @@ final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
     private(set) var password: String? = nil
 
     /// Not applicable to product variation form
-    private(set) var productName: Observable<String>? = nil
+    private(set) var productName: AnyPublisher<String, Never>? = nil
 
-    private let productVariationSubject: PublishSubject<EditableProductVariationModel> = PublishSubject<EditableProductVariationModel>()
-    private let isUpdateEnabledSubject: PublishSubject<Bool>
+    private let productVariationSubject: PassthroughSubject<EditableProductVariationModel, Never> = PassthroughSubject<EditableProductVariationModel, Never>()
+    private let isUpdateEnabledSubject: PassthroughSubject<Bool, Never>
 
     /// The product variation before any potential edits; reset after a remote update.
     private var originalProductVariation: EditableProductVariationModel {
@@ -57,18 +71,42 @@ final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
         }
     }
 
+    /// The action buttons that should be rendered in the navigation bar.
+    var actionButtons: [ActionButtonType] {
+        var buttons: [ActionButtonType] = {
+            switch (formType, hasUnsavedChanges()) {
+            case (.edit, true):
+                return [.save]
+            default:
+                return []
+            }
+        }()
+
+        if shouldShowMoreOptionsMenu() {
+            buttons.append(.more)
+        }
+
+        return buttons
+    }
+
+    /// Assign this closure to get notified when the variation is deleted.
+    ///
+    var onVariationDeletion: ((ProductVariation) -> Void)?
+
     private let allAttributes: [ProductAttribute]
     private let parentProductSKU: String?
-    private let productImageActionHandler: ProductImageActionHandler
+    private let productImageActionHandler: ProductImageActionHandlerProtocol
     private let storesManager: StoresManager
-    private var cancellable: ObservationToken?
+    private let productImagesUploader: ProductImageUploaderProtocol
+    private var cancellable: AnyCancellable?
 
     init(productVariation: EditableProductVariationModel,
          allAttributes: [ProductAttribute],
          parentProductSKU: String?,
          formType: ProductFormType,
-         productImageActionHandler: ProductImageActionHandler,
-         storesManager: StoresManager = ServiceLocator.stores) {
+         productImageActionHandler: ProductImageActionHandlerProtocol,
+         storesManager: StoresManager = ServiceLocator.stores,
+         productImagesUploader: ProductImageUploaderProtocol = ServiceLocator.productImageUploader) {
         self.allAttributes = allAttributes
         self.parentProductSKU = parentProductSKU
         self.productImageActionHandler = productImageActionHandler
@@ -78,11 +116,11 @@ final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
         self.formType = formType
         self.editable = formType != .readonly
         self.actionsFactory = ProductVariationFormActionsFactory(productVariation: productVariation, editable: editable)
-        self.isUpdateEnabledSubject = PublishSubject<Bool>()
+        self.isUpdateEnabledSubject = PassthroughSubject<Bool, Never>()
+        self.productImagesUploader = productImagesUploader
         self.cancellable = productImageActionHandler.addUpdateObserver(self) { [weak self] allStatuses in
-            if allStatuses.productImageStatuses.hasPendingUpload {
-                self?.isUpdateEnabledSubject.send(true)
-            }
+            guard let self = self else { return }
+            self.isUpdateEnabledSubject.send(self.hasUnsavedChanges())
         }
     }
 
@@ -91,13 +129,28 @@ final class ProductVariationFormViewModel: ProductFormViewModelProtocol {
     }
 
     func hasUnsavedChanges() -> Bool {
-        return productVariation != originalProductVariation || productImageActionHandler.productImageStatuses.hasPendingUpload
+        let hasProductChangesExcludingImages =
+        productVariation.productVariation.copy(image: .some(nil)) != originalProductVariation.productVariation.copy(image: .some(nil))
+        let hasImageChanges = productImagesUploader
+            .hasUnsavedChangesOnImages(key: .init(siteID: productVariation.siteID,
+                                                  productOrVariationID:
+                    .variation(productID: productVariation.productVariation.productID,
+                               variationID: productVariation.productVariation.productVariationID),
+                                                  isLocalID: !productVariation.existsRemotely),
+                                       originalImages: originalProductVariation.images)
+        return hasProductChangesExcludingImages || hasImageChanges
     }
 }
 
 // MARK: - More menu
 //
 extension ProductVariationFormViewModel {
+    /// Variations can't be published independently
+    ///
+    func canShowPublishOption() -> Bool {
+        false
+    }
+
     func canSaveAsDraft() -> Bool {
         false
     }
@@ -107,14 +160,18 @@ extension ProductVariationFormViewModel {
     }
 
     func canViewProductInStore() -> Bool {
-        false
+        originalProductVariation.productVariation.status == .published && formType != .add
     }
 
     func canShareProduct() -> Bool {
-        false
+        formType != .add
     }
 
     func canDeleteProduct() -> Bool {
+        formType == .edit
+    }
+
+    func canDuplicateProduct() -> Bool {
         false
     }
 }
@@ -161,7 +218,7 @@ extension ProductVariationFormViewModel {
     func updateInventorySettings(sku: String?,
                                  manageStock: Bool,
                                  soldIndividually: Bool?,
-                                 stockQuantity: Int64?,
+                                 stockQuantity: Decimal?,
                                  backordersSetting: ProductBackordersSetting?,
                                  stockStatus: ProductStockStatus?) {
         productVariation = EditableProductVariationModel(productVariation: productVariation.productVariation.copy(sku: sku,
@@ -182,7 +239,7 @@ extension ProductVariationFormViewModel {
                                                          parentProductSKU: parentProductSKU)
     }
 
-    func updateProductType(productType: ProductType) {
+    func updateProductType(productType: BottomSheetProductType) {
         // no-op
     }
 
@@ -216,7 +273,7 @@ extension ProductVariationFormViewModel {
 
     func updateStatus(_ isEnabled: Bool) {
         ServiceLocator.analytics.track(.productVariationDetailViewStatusSwitchTapped)
-        let status: ProductStatus = isEnabled ? .publish: .privateStatus
+        let status: ProductStatus = isEnabled ? .published: .privateStatus
         productVariation = EditableProductVariationModel(productVariation: productVariation.productVariation.copy(status: status),
                                                          allAttributes: allAttributes,
                                                          parentProductSKU: parentProductSKU)
@@ -228,6 +285,16 @@ extension ProductVariationFormViewModel {
 
     func updateLinkedProducts(upsellIDs: [Int64], crossSellIDs: [Int64]) {
         // no-op
+    }
+
+    func updateVariationAttributes(_ attributes: [ProductVariationAttribute]) {
+        productVariation = EditableProductVariationModel(productVariation: productVariation.productVariation.copy(attributes: attributes),
+                                                         allAttributes: allAttributes,
+                                                         parentProductSKU: parentProductSKU)
+    }
+
+    func updateProductVariations(from product: Product) {
+        //no-op
     }
 }
 
@@ -250,16 +317,64 @@ extension ProductVariationFormViewModel {
                                                           parentProductSKU: self.parentProductSKU)
                 self.resetProductVariation(model)
                 onCompletion(.success(model))
+                self.saveProductVariationImageWhenUploaded()
             }
         }
         storesManager.dispatch(updateAction)
     }
 
-    func deleteProductRemotely(onCompletion: @escaping (Result<EditableProductModel, ProductUpdateError>) -> Void) {
+    func duplicateProduct(onCompletion: @escaping (Result<EditableProductVariationModel, ProductUpdateError>) -> Void) {
         // no-op
     }
+
+    func deleteProductRemotely(onCompletion: @escaping (Result<Void, ProductUpdateError>) -> Void) {
+        let deleteAction = ProductVariationAction.deleteProductVariation(productVariation: productVariation.productVariation) { [weak self] result in
+            switch result {
+            case .success:
+                if let self = self {
+                    self.onVariationDeletion?(self.productVariation.productVariation)
+                }
+                onCompletion(.success(()))
+            case .failure(let error):
+                onCompletion(.failure(error))
+            }
+        }
+        storesManager.dispatch(deleteAction)
+    }
+
     private func resetProductVariation(_ productVariation: EditableProductVariationModel) {
         originalProductVariation = productVariation
+        isUpdateEnabledSubject.send(hasUnsavedChanges())
+    }
+
+    private func saveProductVariationImageWhenUploaded() {
+        productImagesUploader
+            .saveProductImagesWhenNoneIsPendingUploadAnymore(key: .init(siteID: productVariation.siteID,
+                                                                        productOrVariationID:
+                    .variation(productID: productVariation.productVariation.productID,
+                               variationID: productVariation.productVariation.productVariationID),
+                                                                        isLocalID: !productVariation.existsRemotely)) { [weak self] result in
+                guard let self = self else { return }
+                switch result {
+                case .success(let images):
+                    let currentProduct = self.productVariation
+                    self.resetProductVariation(.init(productVariation: self.originalProductVariation.productVariation.copy(image: images.first),
+                                                     allAttributes: self.allAttributes,
+                                                     parentProductSKU: self.parentProductSKU))
+                    // Because `resetProductVariation` also internally updates the latest `productVariation`, the
+                    // `productVariation` is set with the value before `resetProductVariation` to retain any local changes.
+                    self.productVariation = .init(productVariation: currentProduct.productVariation,
+                                                  allAttributes: self.allAttributes,
+                                                  parentProductSKU: self.parentProductSKU)
+                case .failure:
+                    // If the variation image update request fails, the update CTA visibility is refreshed again so that the merchant can save the
+                    // variation image again along with any other potential local changes.
+                    self.isUpdateEnabledSubject.send(self.hasUnsavedChanges())
+                }
+            }
+        // Updates the update CTA visibility after scheduling a save request when no images are pending upload anymore, so that the update CTA
+        // isn't shown right after the save request from pending image upload.
+        // The save request keeps track of the latest image statuses at the time of the call and their upload progress over time.
         isUpdateEnabledSubject.send(hasUnsavedChanges())
     }
 }
@@ -268,6 +383,14 @@ extension ProductVariationFormViewModel {
 //
 extension ProductVariationFormViewModel {
     func resetPassword(_ password: String?) {
+        // no-op
+    }
+}
+
+// MARK: Tracking
+//
+extension ProductVariationFormViewModel {
+    func trackProductFormLoaded() {
         // no-op
     }
 }

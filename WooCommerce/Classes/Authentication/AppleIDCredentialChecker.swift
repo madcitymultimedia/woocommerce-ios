@@ -1,19 +1,23 @@
 import Combine
 import KeychainAccess
 import WordPressAuthenticator
-import Observables
 import Yosemite
+
+protocol AppleIDCredentialCheckerProtocol {
+    /// Checks whether the user signed in with Apple.
+    func hasAppleUserID() -> Bool
+}
 
 /// Checks and listens for observations when the Apple ID credential is revoked when the user previously signed in with Apple.
 ///
-final class AppleIDCredentialChecker {
+final class AppleIDCredentialChecker: AppleIDCredentialCheckerProtocol {
     /// Keychain access for SIWA auth token
     private lazy var keychain = Keychain(service: WooConstants.keychainServiceName)
 
     private let authenticator: WordPressAuthenticator
     private let stores: StoresManager
 
-    private var cancellable: ObservationToken?
+    private var cancellable: AnyCancellable?
     private var cancellables = Set<AnyCancellable>()
 
     init(authenticator: WordPressAuthenticator = WordPressAuthenticator.shared, stores: StoresManager = ServiceLocator.stores) {
@@ -29,8 +33,12 @@ final class AppleIDCredentialChecker {
         }
     }
 
+    func hasAppleUserID() -> Bool {
+        keychain.wooAppleID != nil
+    }
+
     func observeLoggedInStateForAppleIDObservations() {
-        cancellable = stores.isLoggedIn.subscribe { [weak self] isLoggedIn in
+        cancellable = stores.isLoggedInPublisher.sink { [weak self] isLoggedIn in
             if isLoggedIn {
                 self?.startObservingAppleIDCredentialRevoked()
             } else {

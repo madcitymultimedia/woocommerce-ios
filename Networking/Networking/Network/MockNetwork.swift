@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Alamofire
 
@@ -26,27 +27,19 @@ class MockNetwork: Network {
     ///
     var requestsForResponseData = [URLRequestConvertible]()
 
-
-    /// Public Initializer
+    /// Note: If the useResponseQueue param is `true`, any responses added via `simulateResponse` will stored in a FIFO queue
+    /// and used once for a matching request (then removed from the queue). Subsequent requests will use the next response in the queue, and so on.
     ///
-    required init(credentials: Credentials) { }
-
-    /// Dummy convenience initializer. Remember: Real Network wrappers will allways need credentials!
-    ///
-    /// Note: If the useResponseQueue param is `true`, any repsonses added via `simulateResponse` will stored in a FIFO queue
-    /// and used once for a matching request (then removed from the queue). Subsuquent requests will use the next response in the queue, and so on.
-    ///
-    /// If the useResponseQueue param is `false`, any repsonses added via `simulateResponse` will stored in an array and can
+    /// If the useResponseQueue param is `false`, any responses added via `simulateResponse` will stored in an array and can
     /// be reused multiple times.
     ///
     /// - Parameter useResponseQueue: Use the response queue. Default is `false`.
     ///
-    convenience init(useResponseQueue: Bool = false) {
-        let dummy = Credentials(username: "", authToken: "", siteAddress: "")
-        self.init(credentials: dummy)
+    init(useResponseQueue: Bool = false) {
         self.useResponseQueue = useResponseQueue
     }
 
+    var session: URLSession { URLSession(configuration: .default) }
 
     /// Whenever the Request's URL matches any of the "Mocked Up Patterns", we'll return the specified response file, loaded as *Data*.
     /// Otherwise, an error will be relayed back (.notFound!).
@@ -79,6 +72,20 @@ class MockNetwork: Network {
         }
 
         completion(.success(data))
+    }
+
+    func responseDataPublisher(for request: URLRequestConvertible) -> AnyPublisher<Swift.Result<Data, Error>, Never> {
+        requestsForResponseData.append(request)
+
+        if let error = error(for: request) {
+            return Just<Swift.Result<Data, Error>>(.failure(error)).eraseToAnyPublisher()
+        }
+
+        guard let name = filename(for: request), let data = Loader.contentsOf(name) else {
+            return Just<Swift.Result<Data, Error>>(.failure(NetworkError.notFound)).eraseToAnyPublisher()
+        }
+
+        return Just<Swift.Result<Data, Error>>(.success(data)).eraseToAnyPublisher()
     }
 
     func uploadMultipartFormData(multipartFormData: @escaping (MultipartFormData) -> Void,
@@ -150,7 +157,10 @@ private extension MockNetwork {
                 return responseQueue[keyAndQueue.key]?.dequeue()
             }
         } else {
-            if let filename = responseMap.filter({ searchPath.hasSuffix($0.key) }).first?.value {
+            if let filename = responseMap.filter({ searchPath.hasSuffix($0.key) })
+                // In cases where a suffix is a substring of another suffix, the longer suffix is preferred in matched results.
+                .sorted(by: { $0.key.count > $1.key.count })
+                .first?.value {
                 return filename
             }
         }
@@ -173,7 +183,11 @@ private extension MockNetwork {
     ///
     private func path(for request: URLRequestConvertible) -> String {
         switch request {
-        case let request as AuthenticatedRequest:
+        case let request as AuthenticatedDotcomRequest:
+            return path(for: request.request)
+        case let request as AuthenticatedRESTRequest:
+            return path(for: request.request)
+        case let request as UnauthenticatedRequest:
             return path(for: request.request)
         case let request as JetpackRequest:
             return request.path

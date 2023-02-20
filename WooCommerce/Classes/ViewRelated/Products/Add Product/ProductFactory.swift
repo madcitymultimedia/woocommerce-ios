@@ -8,18 +8,25 @@ struct ProductFactory {
     /// - Parameters:
     ///   - type: The type of the product.
     ///   - siteID: The site ID where the product is added to.
-    func createNewProduct(type: ProductType, siteID: Int64) -> Product? {
+    func createNewProduct(type: ProductType, isVirtual: Bool, siteID: Int64) -> Product? {
         switch type {
         case .simple, .grouped, .variable, .affiliate:
-            return createEmptyProduct(type: type, siteID: siteID)
+            return createEmptyProduct(type: type, isVirtual: isVirtual, siteID: siteID)
         default:
             return nil
         }
     }
+
+    /// Copies a product by cleaning properties like `id, name, and statusKey` to their default state.
+    /// This is usefult to turn an existing(on core) `auto-draft` product into a new app-product ready to be saved.
+    ///
+    func newProduct(from existingProduct: Product) -> Product {
+        existingProduct.copy(productID: 0, name: "", statusKey: ProductStatus.published.rawValue)
+    }
 }
 
 private extension ProductFactory {
-    func createEmptyProduct(type: ProductType, siteID: Int64) -> Product {
+    func createEmptyProduct(type: ProductType, isVirtual: Bool, siteID: Int64) -> Product {
         Product(siteID: siteID,
                 productID: 0,
                 name: "",
@@ -31,7 +38,7 @@ private extension ProductFactory {
                 dateOnSaleStart: nil,
                 dateOnSaleEnd: nil,
                 productTypeKey: type.rawValue,
-                statusKey: ProductStatus.publish.rawValue,
+                statusKey: ProductStatus.published.rawValue,
                 featured: false,
                 catalogVisibilityKey: ProductCatalogVisibility.visible.rawValue,
                 fullDescription: "",
@@ -43,7 +50,7 @@ private extension ProductFactory {
                 onSale: false,
                 purchasable: false,
                 totalSales: 0,
-                virtual: false,
+                virtual: isVirtual,
                 downloadable: false,
                 downloads: [],
                 downloadLimit: -1,
@@ -81,6 +88,7 @@ private extension ProductFactory {
                 defaultAttributes: [],
                 variations: [],
                 groupedProducts: [],
-                menuOrder: 0)
+                menuOrder: 0,
+                addOns: [])
     }
 }

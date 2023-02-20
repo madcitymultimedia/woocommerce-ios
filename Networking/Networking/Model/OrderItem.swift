@@ -1,9 +1,9 @@
 import Foundation
-
+import Codegen
 
 /// Represents an Order's Item Entity.
 ///
-public struct OrderItem: Decodable, Hashable {
+public struct OrderItem: Codable, Equatable, Hashable, GeneratedFakeable, GeneratedCopiable {
     public let itemID: Int64
     public let name: String
     public let productID: Int64
@@ -72,12 +72,8 @@ public struct OrderItem: Decodable, Hashable {
         if isVariation {
             name = try ((container.decodeIfPresent(String.self, forKey: .variationParentName))
                         ?? container.decode(String.self, forKey: .name)).strippedHTML
-            let allAttributes = (try? container.decodeIfPresent([OrderItemAttribute].self, forKey: .attributes)) ?? []
-            // Skips any attribute if the name is `_reduced_stock` because this is a known attribute added by core.
-            attributes = allAttributes.filter { !$0.name.hasPrefix("_") }
         } else {
             name = try container.decode(String.self, forKey: .name).strippedHTML
-            attributes = []
         }
 
         let quantity = try container.decode(Decimal.self, forKey: .quantity)
@@ -91,6 +87,10 @@ public struct OrderItem: Decodable, Hashable {
         let taxes = try container.decode([OrderItemTax].self, forKey: .taxes)
         let total = try container.decode(String.self, forKey: .total)
         let totalTax = try container.decode(String.self, forKey: .totalTax)
+
+        // Do not throw errors in case new metadata is introduced with a different format
+        let allAttributes = (try? container.decodeIfPresent([OrderItemAttribute].self, forKey: .attributes)) ?? []
+        attributes = allAttributes.filter { !$0.name.hasPrefix("_") } // Exclude private items (marked with an underscore)
 
         // initialize the struct
         self.init(itemID: itemID,
@@ -108,12 +108,34 @@ public struct OrderItem: Decodable, Hashable {
                   totalTax: totalTax,
                   attributes: attributes)
     }
+
+    /// Encodes an order item.
+    ///
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(itemID, forKey: .itemID)
+
+        let parentID = variationID != 0 ? variationID : productID
+        try container.encode(parentID, forKey: .productID)
+
+        let nonDecimalQuantity = (quantity as NSDecimalNumber).int64Value
+        try container.encode(nonDecimalQuantity, forKey: .quantity)
+
+        if !subtotal.isEmpty {
+            try container.encode(subtotal, forKey: .subtotal)
+        }
+
+        if !total.isEmpty {
+            try container.encode(total, forKey: .total)
+        }
+    }
 }
 
 
 /// Defines all of the OrderItem's CodingKeys.
 ///
-private extension OrderItem {
+extension OrderItem {
 
     enum CodingKeys: String, CodingKey {
         case itemID         = "id"
@@ -137,7 +159,7 @@ private extension OrderItem {
 
 // MARK: - Comparable Conformance
 //
-extension OrderItem: Equatable, Comparable {
+extension OrderItem: Comparable {
     public static func < (lhs: OrderItem, rhs: OrderItem) -> Bool {
         return lhs.itemID < rhs.itemID ||
             (lhs.itemID == rhs.itemID && lhs.productID < rhs.productID) ||

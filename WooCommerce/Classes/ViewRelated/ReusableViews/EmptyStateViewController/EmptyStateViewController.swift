@@ -1,4 +1,3 @@
-
 import UIKit
 
 /// A configurable view to display an "empty state".
@@ -54,9 +53,13 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
     /// The scrollable view which contains the `contentView`.
     ///
     @IBOutlet private var scrollView: UIScrollView!
-    /// The child of the scrollView containing all the content (labels, image, etc).
+    /// The child of the scrollView which contains the `stackView`.
     ///
     @IBOutlet private var contentView: UIView!
+    /// The child of the contentView containing all the content (labels, image, etc).
+    ///
+    @IBOutlet private weak var stackView: UIStackView!
+
 
     /// The height adjustment constraint for the content view.
     ///
@@ -72,11 +75,20 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
     ///
     private let style: Style
 
+    /// Initial configuration.
+    /// Useful when rendering this view controller using the UIKit presentation APIs.
+    ///
+    private var configuration: Config?
+
     /// The handler to execute when the button is tapped.
     ///
     /// This is normally set up in `configure()`.
     ///
     private var lastActionButtonTapHandler: (() -> ())?
+
+    /// The handler to execute when the view is pulled to refresh.
+    ///
+    private var pullToRefreshHandler: ((UIRefreshControl) -> ())?
 
     private lazy var keyboardFrameObserver = KeyboardFrameObserver(onKeyboardFrameUpdate: { [weak self] frame in
         self?.handleKeyboardFrameUpdate(keyboardFrame: frame)
@@ -89,9 +101,58 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
     /// Used to present the Contact Support dialog if the `Config` is `.withSupportRequest`.
     private let zendeskManager: ZendeskManagerProtocol
 
-    init(style: Style = .basic, zendeskManager: ZendeskManagerProtocol = ZendeskManager.shared) {
+    /// Used to pin the stackView to the center of the visible area in the contact view,
+    /// taking account of the banner view when it's shown.
+    private lazy var visiblyCenteredLayoutGuide: UILayoutGuide = {
+        let centerGuide = UILayoutGuide()
+        contentView.addLayoutGuide(centerGuide)
+        let topConstraint = centerGuide.topAnchor.constraint(equalTo: contentView.topAnchor)
+        topConstraint.priority = UILayoutPriority(250)
+        NSLayoutConstraint.activate([
+            topConstraint,
+            centerGuide.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            centerGuide.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            centerGuide.trailingAnchor.constraint(equalTo: contentView.trailingAnchor)])
+        return centerGuide
+    }()
+
+    /// Top banner that shows an error if there is a problem loading reviews data
+    ///
+    private lazy var topBannerView: TopBannerView = {
+        ErrorTopBannerFactory.createTopBanner(isExpanded: false,
+                                              expandedStateChangeHandler: {},
+                                              onTroubleshootButtonPressed: { [weak self] in
+                                                guard let self = self else { return }
+
+                                                WebviewHelper.launch(WooConstants.URLs.troubleshootErrorLoadingData.asURL(), with: self)
+                                              },
+                                              onContactSupportButtonPressed: { [weak self] in
+                                                guard let self = self else { return }
+            if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests) {
+                let supportForm = SupportFormHostingController(viewModel: .init())
+                supportForm.show(from: self)
+            } else {
+                ZendeskProvider.shared.showNewRequestIfPossible(from: self, with: nil)
+            }
+                                              })
+    }()
+
+    convenience init(style: Style = .basic, configuration: Config? = nil, zendeskManager: ZendeskManagerProtocol? = nil) {
+        if let zendeskManager = zendeskManager {
+            self.init(style: style, configuration: configuration, zendesk: zendeskManager)
+        } else {
+            #if !targetEnvironment(macCatalyst)
+            self.init(style: style, configuration: configuration, zendesk: ZendeskProvider.shared)
+            #else
+            self.init(style: style, configuration: configuration, zendesk: NoZendeskManager())
+            #endif
+        }
+    }
+
+    init(style: Style, configuration: Config?, zendesk: ZendeskManagerProtocol) {
         self.style = style
-        self.zendeskManager = zendeskManager
+        self.configuration = configuration
+        self.zendeskManager = zendesk
         super.init(nibName: type(of: self).nibName, bundle: nil)
     }
 
@@ -104,11 +165,16 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
 
         view.backgroundColor = style.backgroundColor
         contentView.backgroundColor = style.backgroundColor
+        NSLayoutConstraint.activate([stackView.centerYAnchor.constraint(equalTo: visiblyCenteredLayoutGuide.centerYAnchor)])
 
-        messageLabel.applyBodyStyle()
+        messageLabel.applySecondaryTitleStyle()
         detailsLabel.applySecondaryBodyStyle()
 
         keyboardFrameObserver.startObservingKeyboardFrame(sendInitialEvent: true)
+
+        if let configuration = configuration {
+            configure(configuration)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -120,6 +186,8 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
     /// Configure the elements to be displayed.
     ///
     func configure(_ config: Config) {
+        _ = view // trigger loading view before configuring contents
+        configuration = config
         messageLabel.attributedText = config.message
 
         imageView.image = config.image
@@ -132,22 +200,35 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
 
         lastActionButtonTapHandler = {
             switch config {
-            case .withLink(_, _, _, _, let linkURL):
+            case .withLink(_, _, _, _, let linkURL, _):
                 return { [weak self] in
                     if let self = self {
                         WebviewHelper.launch(linkURL, with: self)
                     }
                 }
+            case .withButton(_, _, _, _, let tapClosure, _):
+                return { [weak self] in
+                    if let self = self {
+                        tapClosure(self.actionButton)
+                    }
+                }
             case .withSupportRequest:
                 return { [weak self] in
                     if let self = self {
-                        self.zendeskManager.showNewRequestIfPossible(from: self, with: nil)
+                        if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests) {
+                            let supportForm = SupportFormHostingController(viewModel: .init())
+                            supportForm.show(from: self)
+                        } else {
+                            self.zendeskManager.showNewRequestIfPossible(from: self, with: nil)
+                        }
                     }
                 }
             default:
                 return nil
             }
         }()
+
+        configurePullToRefresh(config)
     }
 
     /// Watch for device orientation changes and update the `imageView`'s visibility accordingly.
@@ -196,26 +277,77 @@ final class EmptyStateViewController: UIViewController, KeyboardFrameAdjustmentP
     @IBAction private func actionButtonTapped(_ sender: Any) {
         lastActionButtonTapHandler?()
     }
+
+    /// Display the error banner at the top of the view
+    ///
+    func showTopBannerView() {
+        contentView.insertSubview(topBannerView, at: 0)
+        NSLayoutConstraint.activate([
+            topBannerView.leadingAnchor.constraint(equalTo: contentView.safeLeadingAnchor),
+            topBannerView.trailingAnchor.constraint(equalTo: contentView.safeTrailingAnchor),
+            topBannerView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            topBannerView.bottomAnchor.constraint(lessThanOrEqualTo: stackView.topAnchor, constant: -16),
+            visiblyCenteredLayoutGuide.topAnchor.constraint(equalTo: topBannerView.bottomAnchor)
+        ])
+    }
+
+    /// Hide the error banner at the top of the view
+    ///
+    func hideTopBannerView() {
+        topBannerView.removeFromSuperview()
+    }
 }
 
 // MARK: - Configuration
 
 private extension EmptyStateViewController {
+    @objc func onPullToRefresh(sender: UIRefreshControl) {
+        pullToRefreshHandler?(sender)
+    }
+
     /// Configures the `actionButton` based on the given `config`.
     func configureActionButton(_ config: Config) {
         switch config {
         case .simple:
             actionButton.isHidden = true
-        case .withLink(_, _, _, let linkTitle, _):
+        case .withLink(_, _, _, let title, _, _), .withButton(_, _, _, let title, _, _):
             actionButton.isHidden = false
             actionButton.applyPrimaryButtonStyle()
-            actionButton.setTitle(linkTitle, for: .normal)
-        case .withSupportRequest(_, _, _, let buttonTitle):
+            actionButton.setTitle(title, for: .normal)
+        case .withSupportRequest(_, _, _, let buttonTitle, _):
             actionButton.isHidden = false
             actionButton.applyLinkButtonStyle()
-            actionButton.contentEdgeInsets = .zero
+            var configuration = UIButton.Configuration.filled()
+            configuration.contentInsets = .init(.zero)
             actionButton.setTitle(buttonTitle, for: .normal)
         }
+    }
+
+    /// Configures pull to refresh based on the given `config`
+    func configurePullToRefresh(_ config: Config) {
+        pullToRefreshHandler = {
+            switch config {
+            case .simple(_, _, let pullToRefreshClosure):
+                return pullToRefreshClosure
+            case .withLink(_, _, _, _, _, let pullToRefreshClosure):
+                return pullToRefreshClosure
+            case .withButton(_, _, _, _, _, let pullToRefreshClosure):
+                return pullToRefreshClosure
+            case .withSupportRequest(_, _, _, _, let pullToRefreshClosure):
+                return pullToRefreshClosure
+            }
+        }()
+
+        guard pullToRefreshHandler != nil else {
+            // Remove refresh control if config doesn't have action handler
+            return scrollView.refreshControl = nil
+        }
+
+        // Create refresh control if needed
+        if scrollView.refreshControl == nil {
+            scrollView.refreshControl = UIRefreshControl()
+        }
+        scrollView.refreshControl?.addTarget(self, action: #selector(onPullToRefresh(sender:)), for: .valueChanged)
     }
 }
 
@@ -261,9 +393,10 @@ extension EmptyStateViewController {
     /// having a high degree of customizability.
     ///
     enum Config {
+        typealias PullToRequestActionHandler = ((UIRefreshControl) -> Void)
         /// Show a message and image only.
         ///
-        case simple(message: NSAttributedString, image: UIImage)
+        case simple(message: NSAttributedString, image: UIImage, onPullToRefresh: PullToRequestActionHandler? = nil)
 
         /// Show all the elements and a prominent button which navigates to a URL when activated.
         ///
@@ -271,37 +404,61 @@ extension EmptyStateViewController {
         ///     - linkTitle: The content shown on the `actionButton`.
         ///     - linkURL: The URL that will be navigated to when the `actionButton` is activated.
         ///
-        case withLink(message: NSAttributedString, image: UIImage, details: String, linkTitle: String, linkURL: URL)
+        case withLink(message: NSAttributedString,
+                      image: UIImage,
+                      details: String,
+                      linkTitle: String,
+                      linkURL: URL,
+                      onPullToRefresh: PullToRequestActionHandler? = nil)
+
+        /// Show all the elements and a prominent button which calls back the provided closure when tapped.
+        ///
+        /// - Parameters:
+        ///     - buttonTitle: The content shown on the `actionButton`.
+        ///     - onTap: Closure to be executed when the button is tapped.
+        ///
+        case withButton(message: NSAttributedString,
+                        image: UIImage,
+                        details: String,
+                        buttonTitle: String,
+                        onTap: (UIButton) -> Void,
+                        onPullToRefresh: PullToRequestActionHandler? = nil)
 
         /// Shows all the elements and a text-style button which shows the Contact Us dialog when activated.
         ///
         /// - Parameter buttonTitle: The content shown on the button that displays the Contact Support dialog.
         ///
-        case withSupportRequest(message: NSAttributedString, image: UIImage, details: String, buttonTitle: String)
+        case withSupportRequest(message: NSAttributedString,
+                                image: UIImage,
+                                details: String,
+                                buttonTitle: String,
+                                onPullToRefresh: PullToRequestActionHandler? = nil)
 
         /// The font used by the message's `UILabel`.
         ///
         /// This is exposed so that consumers can build `NSAttributedString` instances using the same
         /// font. The `NSAttributedString` instance can then be used in `configure(message:`).
         ///
-        /// This must match the `applyBodyStyle()` call in `viewDidLoad`.
+        /// This must match the `messageLabel` style applied in `viewDidLoad`.
         ///
-        static let messageFont: UIFont = .body
+        static let messageFont: UIFont = .title2
 
         fileprivate var message: NSAttributedString {
             switch self {
-            case .simple(let message, _),
-                 .withLink(let message, _, _, _, _),
-                 .withSupportRequest(let message, _, _, _):
+            case .simple(let message, _, _),
+                 .withLink(let message, _, _, _, _, _),
+                 .withButton(let message, _, _, _, _, _),
+                 .withSupportRequest(let message, _, _, _, _):
                 return message
             }
         }
 
         fileprivate var image: UIImage {
             switch self {
-            case .simple(_, let image),
-                 .withLink(_, let image, _, _, _),
-                 .withSupportRequest(_, let image, _, _):
+            case .simple(_, let image, _),
+                 .withLink(_, let image, _, _, _, _),
+                 .withButton(_, let image, _, _, _, _),
+                 .withSupportRequest(_, let image, _, _, _):
                 return image
             }
         }
@@ -310,8 +467,9 @@ extension EmptyStateViewController {
             switch self {
             case .simple:
                 return nil
-            case .withLink(_, _, let detail, _, _),
-                 .withSupportRequest(_, _, let detail, _):
+            case .withLink(_, _, let detail, _, _, _),
+                 .withButton(_, _, let detail, _, _, _),
+                 .withSupportRequest(_, _, let detail, _, _):
                 return detail
             }
         }

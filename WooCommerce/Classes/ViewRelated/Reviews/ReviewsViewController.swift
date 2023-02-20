@@ -1,29 +1,34 @@
 import UIKit
 
-
 // MARK: - ReviewsViewController
 //
-final class ReviewsViewController: UIViewController {
+final class ReviewsViewController: UIViewController, GhostableViewController {
 
-    private let siteID: Int64
+    typealias ViewModel = ReviewsViewModelOutput & ReviewsViewModelActionsHandler
 
     /// Main TableView.
     ///
     @IBOutlet private weak var tableView: UITableView!
 
+    lazy var ghostTableViewController = GhostTableViewController(options: GhostTableViewOptions(sectionHeaderVerticalSpace: .large,
+                                                                                                cellClass: ProductReviewTableViewCell.self,
+                                                                                                estimatedRowHeight: Settings.estimatedRowHeight))
+
     /// Mark all as read nav bar button
     ///
     private lazy var rightBarButton: UIBarButtonItem = {
-        let item = UIBarButtonItem(image: .checkmarkImage,
+        let item = UIBarButtonItem(image: .ellipsisImage,
                                    style: .plain,
                                    target: self,
-                                   action: #selector(markAllAsRead))
-        item.accessibilityIdentifier = "reviews-mark-all-as-read-button"
-
+                                   action: #selector(presentMoreActions))
+        item.accessibilityIdentifier = "reviews-open-menu-button"
+        item.accessibilityTraits = .button
+        item.accessibilityLabel = Localization.MenuButton.accessibilityLabel
+        item.accessibilityHint = Localization.MenuButton.accessibilityHint
         return item
     }()
 
-    private let viewModel: ReviewsViewModel
+    private let viewModel: ViewModel
 
     /// Haptic Feedback!
     ///
@@ -57,6 +62,10 @@ final class ReviewsViewController: UIViewController {
         return viewModel.isEmpty
     }
 
+    /// The view shown if the list is empty.
+    ///
+    private lazy var emptyStateViewController = EmptyStateViewController(style: .list)
+
     /// The last seen time for notifications
     ///
     private var lastSeenTime: String? {
@@ -87,11 +96,39 @@ final class ReviewsViewController: UIViewController {
     ///
     private lazy var footerSpinnerView = FooterSpinnerView()
 
-    // MARK: - View Lifecycle
+    /// Top banner that shows an error if there is a problem loading reviews data
+    ///
+    private lazy var topBannerView: TopBannerView = {
+        ErrorTopBannerFactory.createTopBanner(isExpanded: false,
+                                              expandedStateChangeHandler: { [weak self] in
+                                                self?.tableView.updateHeaderHeight()
+                                              },
+                                              onTroubleshootButtonPressed: { [weak self] in
+                                                guard let self = self else { return }
 
-    init(siteID: Int64) {
-        self.siteID = siteID
-        self.viewModel = ReviewsViewModel(siteID: siteID, data: DefaultReviewsDataSource(siteID: siteID))
+                                                WebviewHelper.launch(WooConstants.URLs.troubleshootErrorLoadingData.asURL(), with: self)
+                                              },
+                                              onContactSupportButtonPressed: { [weak self] in
+                                                guard let self = self else { return }
+            if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests) {
+                let supportForm = SupportFormHostingController(viewModel: .init())
+                supportForm.show(from: self)
+            } else {
+                ZendeskProvider.shared.showNewRequestIfPossible(from: self, with: nil)
+            }
+                                              })
+    }()
+
+    // MARK: - Initializers
+    //
+    convenience init(siteID: Int64) {
+        self.init(viewModel: ReviewsViewModel(siteID: siteID,
+                                              data: ReviewsDataSource(siteID: siteID,
+                                                                             customizer: GlobalReviewsDataSourceCustomizer())))
+    }
+
+    init(viewModel: ViewModel) {
+        self.viewModel = viewModel
 
         super.init(nibName: nil, bundle: nil)
 
@@ -103,6 +140,8 @@ final class ReviewsViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: - View Lifecycle
+    //
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .listBackground
@@ -110,8 +149,6 @@ final class ReviewsViewController: UIViewController {
         refreshTitle()
 
         configureSyncingCoordinator()
-        configureNavigationItem()
-        configureNavigationBarButtons()
         configureTableView()
         configureTableViewCells()
         configureResultsController()
@@ -124,15 +161,27 @@ final class ReviewsViewController: UIViewController {
         super.viewWillAppear(animated)
 
         resetApplicationBadge()
-        transitionToResultsUpdatedState()
 
-        if isEmpty {
-            transitionToSyncingState(pageNumber: SyncingCoordinator.Defaults.pageFirstIndex)
+        if state == .emptyUnfiltered {
+            syncingCoordinator.resynchronize()
         }
 
-        if AppRatingManager.shared.shouldPromptForAppReview(section: Constants.section) {
+        if viewModel.shouldPromptForAppReview {
             displayRatingPrompt()
         }
+
+        // Fix any incomplete animation of the refresh control
+        // when switching tabs mid-animation
+        refreshControl.resetAnimation(in: tableView) { [unowned self] in
+            // ghost animation is also removed after switching tabs
+            // show make sure it's displayed again
+            self.removeGhostContent()
+            self.displayGhostContent()
+        }
+    }
+
+    override var shouldShowOfflineBanner: Bool {
+        return true
     }
 }
 
@@ -150,26 +199,9 @@ private extension ReviewsViewController {
     /// Setup: TabBar
     ///
     func configureTabBarItem() {
-        tabBarItem.title = NSLocalizedString("Reviews", comment: "Title of the Reviews tab — plural form of Review")
+        tabBarItem.title = Localization.tabBarItemTitle
         tabBarItem.image = .starOutlineImage()
         tabBarItem.accessibilityIdentifier = "tab-bar-reviews-item"
-    }
-
-    /// Setup: Navigation
-    ///
-    func configureNavigationItem() {
-        // Don't show the Settings title in the next-view's back button
-        navigationItem.backBarButtonItem = UIBarButtonItem(title: String(), style: .plain, target: nil, action: nil)
-    }
-
-    /// Setup: NavigationBar Buttons
-    ///
-    func configureNavigationBarButtons() {
-        rightBarButton.accessibilityTraits = .button
-        rightBarButton.accessibilityLabel = NSLocalizedString("Mark All as Read", comment: "Accessibility label for the Mark All Reviews as Read Button")
-        rightBarButton.accessibilityHint = NSLocalizedString("Marks Every Review as Read",
-                                                             comment: "VoiceOver accessibility hint for the Mark All Reviews as Read Action")
-        navigationItem.rightBarButtonItem = rightBarButton
     }
 
     /// Setup: TableView
@@ -177,16 +209,22 @@ private extension ReviewsViewController {
     func configureTableView() {
         view.backgroundColor = .listBackground
         tableView.backgroundColor = .listBackground
-        tableView.refreshControl = refreshControl
         tableView.dataSource = viewModel.dataSource
         tableView.tableFooterView = footerSpinnerView
         tableView.sectionFooterHeight = .leastNonzeroMagnitude
+
+        // Adds the refresh control to table view manually so that the refresh control always appears below the navigation bar title in
+        // large or normal size to be consistent with Dashboard and Orders tab with large titles workaround.
+        // If we do `tableView.refreshControl = refreshControl`, the refresh control appears in the navigation bar when large title is shown.
+        tableView.addSubview(refreshControl)
 
         // We decorate the delegate informally, because we want to intercept
         // didSelectItem:at: but delegate the rest of the implementation of
         // UITableViewDelegate to the implementation of UITableViewDelegate
         // provided by the view model. It could be argued that we are just cheating.
         tableView.delegate = self
+
+        tableView.accessibilityIdentifier = "reviews-table"
     }
 
     /// Setup: ResultsController
@@ -202,10 +240,7 @@ private extension ReviewsViewController {
     }
 
     func refreshTitle() {
-        navigationItem.title = NSLocalizedString(
-            "Reviews",
-            comment: "Title that appears on top of the main Reviews screen (plural form of the word Review)."
-        )
+        title = Localization.title
     }
 }
 
@@ -219,6 +254,21 @@ private extension ReviewsViewController {
         syncingCoordinator.resynchronize() {
             sender.endRefreshing()
         }
+    }
+
+    /// Presents an action sheet on tapping the menu right bar button item.
+    ///
+    @IBAction func presentMoreActions() {
+        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        actionSheet.view.tintColor = .text
+        actionSheet.popoverPresentationController?.barButtonItem = rightBarButton
+
+        actionSheet.addCancelActionWithTitle(Localization.ActionSheet.cancelAction)
+        actionSheet.addDefaultActionWithTitle(Localization.ActionSheet.markAsReadAction) { [weak self] _ in
+            self?.presentMarkAllAsReadConfirmationAlert()
+        }
+
+        present(actionSheet, animated: true)
     }
 
     @IBAction func markAllAsRead() {
@@ -244,7 +294,7 @@ private extension ReviewsViewController {
                 tracks.track(.reviewsMarkAllReadSuccess)
             }
 
-            self.updateMarkAllReadButtonState()
+            self.updateRightBarButtonItem()
             self.tableView.reloadData()
         }
     }
@@ -290,49 +340,50 @@ private extension ReviewsViewController {
 //
 private extension ReviewsViewController {
 
-    /// Renders Placeholder Reviews.
+    /// Displays the EmptyStateViewController.
     ///
-    func displayPlaceholderReviews() {
-        viewModel.displayPlaceholderReviews(tableView: tableView)
-    }
+    func displayEmptyViewController() {
+        let childController = emptyStateViewController
+        let emptyStateConfig = EmptyStateViewController.Config.withLink(message: NSAttributedString(string: Localization.EmptyState.message),
+                                                                        image: .emptyReviewsImage,
+                                                                        details: Localization.EmptyState.detail,
+                                                                        linkTitle: Localization.EmptyState.action,
+                                                                        linkURL: WooConstants.URLs.productReviewInfo.asURL())
 
-    /// Removes Placeholder Reviews.
-    ///
-    func removePlaceholderReviews() {
-        viewModel.removePlaceholderReviews(tableView: tableView)
-    }
-
-    /// Displays the Empty State Overlay.
-    ///
-    func displayEmptyUnfilteredOverlay() {
-        let overlayView: OverlayMessageView = OverlayMessageView.instantiateFromNib()
-        overlayView.messageImage = .emptyReviewsImage
-        overlayView.messageText = NSLocalizedString("No Reviews Yet!", comment: "Empty Reviews List Message")
-        overlayView.actionText = NSLocalizedString("Share your Store", comment: "Action: Opens the Store in a browser")
-        overlayView.onAction = { [weak self] in
-            guard let self = self else {
-                return
-            }
-            guard let site = ServiceLocator.stores.sessionManager.defaultSite else {
-                return
-            }
-            guard let url = URL(string: site.url) else {
-                return
-            }
-
-            ServiceLocator.analytics.track(.reviewsShareStoreButtonTapped)
-            SharingHelper.shareURL(url: url, title: site.name, from: overlayView.actionButtonView, in: self)
+        // Abort if we are already displaying this childController
+        guard childController.parent == nil,
+              let childView = childController.view else {
+            return
         }
 
-        overlayView.attach(to: view)
+        childController.configure(emptyStateConfig)
+
+        // Show Error Loading Data banner if the empty state is caused by a sync error
+        if viewModel.hasErrorLoadingData {
+            childController.showTopBannerView()
+        } else {
+            childController.hideTopBannerView()
+        }
+
+        childView.translatesAutoresizingMaskIntoConstraints = false
+
+        addChild(childController)
+        view.addSubview(childView)
+        tableView.pinSubviewToAllEdges(childView)
+        childController.didMove(toParent: self)
     }
 
-    /// Removes all of the the OverlayMessageView instances in the view hierarchy.
-    ///
-    func removeAllOverlays() {
-        for subview in view.subviews where subview is OverlayMessageView {
-            subview.removeFromSuperview()
+    func removeEmptyViewController() {
+        let childController = emptyStateViewController
+
+        guard childController.parent == self,
+            let childView = childController.view else {
+            return
         }
+
+        childController.willMove(toParent: nil)
+        childView.removeFromSuperview()
+        childController.removeFromParent()
     }
 }
 
@@ -369,7 +420,7 @@ private extension ReviewsViewController {
     /// Note: Just because this func runs does not guarantee `didEnter()` or `didLeave()` will run as well.
     ///
     func willEnter(state: State) {
-        updateNavBarButtonsState()
+        updateRightBarButtonItem()
     }
 
     /// Runs whenever the FSM enters a State.
@@ -378,16 +429,14 @@ private extension ReviewsViewController {
         switch state {
         case .emptyUnfiltered:
             if isEmpty == true {
-                displayEmptyUnfilteredOverlay()
+                displayEmptyViewController()
             }
         case .results:
             break
         case .placeholder:
-            displayPlaceholderReviews()
+            displayGhostContent()
         case .syncing(let pageNumber):
-            if pageNumber == SyncingCoordinator.Defaults.pageFirstIndex {
-                displayPlaceholderReviews()
-            } else {
+            if pageNumber != SyncingCoordinator.Defaults.pageFirstIndex {
                 ensureFooterSpinnerIsStarted()
             }
         }
@@ -398,14 +447,14 @@ private extension ReviewsViewController {
     func didLeave(state: State) {
         switch state {
         case .emptyUnfiltered:
-            removeAllOverlays()
+            removeEmptyViewController()
         case .results:
             break
         case .placeholder:
-            removePlaceholderReviews()
+            removeGhostContent()
         case .syncing:
             ensureFooterSpinnerIsStopped()
-            removePlaceholderReviews()
+            removeGhostContent()
         }
     }
 
@@ -413,6 +462,8 @@ private extension ReviewsViewController {
     ///
     func transitionToSyncingState(pageNumber: Int) {
         state = isEmpty ? .placeholder : .syncing(pageNumber: pageNumber)
+        // Remove banner for error loading data during sync
+        hideTopBannerView()
     }
 
     /// Should be called whenever the results are updated: after Sync'ing (or after applying a filter).
@@ -433,16 +484,10 @@ private extension ReviewsViewController {
 //
 private extension ReviewsViewController {
 
-    /// Enables/disables the navbar buttons if needed
+    /// Show the rightBarButtonItem only if there are unread reviews available.
     ///
-    /// - Parameter filterEnabled: If true, the filter navbar buttons is enabled; if false, it's disabled
-    ///
-    func updateNavBarButtonsState() {
-        updateMarkAllReadButtonState()
-    }
-
-    func updateMarkAllReadButtonState() {
-        rightBarButton.isEnabled = viewModel.hasUnreadNotifications
+    func updateRightBarButtonItem() {
+        navigationItem.rightBarButtonItem = viewModel.hasUnreadNotifications ? rightBarButton : nil
     }
 
     /// Displays the `Mark all as read` Notice if the number of times it was previously displayed is lower than the
@@ -454,9 +499,25 @@ private extension ReviewsViewController {
         }
 
         markAsReadCount += 1
-        let message = NSLocalizedString("All reviews marked as read", comment: "Mark all reviews as read notice")
-        let notice = Notice(title: message, feedbackType: .success)
+        let notice = Notice(title: Localization.Notice.allReviewsMarkedAsRead, feedbackType: .success)
         ServiceLocator.noticePresenter.enqueue(notice: notice)
+    }
+
+    /// Presents an alert which asks the user for confirmation
+    /// before marking all reviews as read.
+    ///
+    func presentMarkAllAsReadConfirmationAlert() {
+        let alertController = UIAlertController(title: Localization.MarkAllAsReadAlert.title,
+                                                message: Localization.MarkAllAsReadAlert.message,
+                                                preferredStyle: .alert)
+        alertController.view.tintColor = .text
+
+        alertController.addActionWithTitle(Localization.MarkAllAsReadAlert.cancelButtonTitle, style: .destructive)
+        alertController.addDefaultActionWithTitle(Localization.MarkAllAsReadAlert.markAllButtonTitle) { [weak self] _ in
+            self?.markAllAsRead()
+        }
+
+        present(alertController, animated: true)
     }
 }
 
@@ -470,9 +531,32 @@ extension ReviewsViewController: SyncingCoordinatorDelegate {
     func sync(pageNumber: Int, pageSize: Int, reason: String? = nil, onCompletion: ((Bool) -> Void)? = nil) {
         transitionToSyncingState(pageNumber: pageNumber)
         viewModel.synchronizeReviews(pageNumber: pageNumber, pageSize: pageSize) { [weak self] in
-            self?.transitionToResultsUpdatedState()
+            guard let self = self else { return }
+            self.transitionToResultsUpdatedState()
+            if self.viewModel.hasErrorLoadingData {
+                self.showTopBannerView()
+            }
             onCompletion?(true)
         }
+    }
+
+    /// Display the error banner in the table view header
+    ///
+    private func showTopBannerView() {
+        // Configure header container view
+        let headerContainer = UIView(frame: CGRect(x: 0, y: 0, width: Int(tableView.frame.width), height: 0))
+        headerContainer.addSubview(topBannerView)
+        headerContainer.pinSubviewToSafeArea(topBannerView)
+
+        tableView.tableHeaderView = headerContainer
+        tableView.updateHeaderHeight()
+    }
+
+    /// Hide the error banner from the table view header
+    ///
+    private func hideTopBannerView() {
+        topBannerView.removeFromSuperview()
+        tableView.tableHeaderView = nil
     }
 }
 
@@ -524,8 +608,59 @@ private extension ReviewsViewController {
         case results
         case syncing(pageNumber: Int)
     }
+}
 
-    struct Constants {
-        static let section = "notifications"
+// MARK: - Localization
+//
+private extension ReviewsViewController {
+    enum Localization {
+        static let title = NSLocalizedString("Reviews",
+                                             comment: "Title that appears on top of the main Reviews screen (plural form of the word Review).")
+
+        static let tabBarItemTitle = NSLocalizedString("Reviews",
+                                                       comment: "Title of the Reviews tab — plural form of Review")
+
+        enum MenuButton {
+            static let accessibilityLabel = NSLocalizedString("Open menu",
+                                                        comment: "Accessibility label for the Menu button")
+            static let accessibilityHint = NSLocalizedString("Menu button which opens an action sheet with option to mark all reviews as read.",
+                                                       comment: "VoiceOver accessibility hint for the Menu button action")
+        }
+
+        enum ActionSheet {
+            static let markAsReadAction = NSLocalizedString("Mark all reviews as read",
+                                                            comment: "Option to mark all reviews as read from the action sheet in Reviews screen.")
+
+            static let cancelAction = NSLocalizedString("Cancel",
+                                                        comment: "Cancel the more menu action sheet in Reviews screen.")
+        }
+
+        enum MarkAllAsReadAlert {
+            static let title = NSLocalizedString("Mark all as read",
+                                                 comment: "Title of Alert which asks user for confirmation before marking all reviews as read.")
+
+            static let message = NSLocalizedString("Are you sure you want to mark all reviews as read?",
+                                                   comment: "Alert message to confirm a user meant to mark all reviews as read.")
+
+            static let cancelButtonTitle = NSLocalizedString("Cancel",
+                                                             comment: "Alert button title - dismisses alert, which cancels marking all as read attempt.")
+
+            static let markAllButtonTitle = NSLocalizedString("Mark all",
+                                                              comment: "Alert button title - confirms and marks all reviews as read")
+        }
+
+        enum Notice {
+            static let allReviewsMarkedAsRead = NSLocalizedString("All reviews marked as read",
+                                                                  comment: "Mark all reviews as read notice")
+        }
+
+        enum EmptyState {
+            static let message = NSLocalizedString("Get your first reviews",
+                                                             comment: "Message shown in the Reviews tab if the list is empty")
+            static let detail = NSLocalizedString("Capture high-quality product reviews for your store.",
+                                                            comment: "Detailed message shown in the Reviews tab if the list is empty")
+            static let action = NSLocalizedString("Learn more",
+                                                            comment: "Title of button shown in the Reviews tab if the list is empty")
+        }
     }
 }

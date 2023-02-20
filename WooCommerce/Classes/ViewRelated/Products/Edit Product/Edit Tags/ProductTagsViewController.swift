@@ -1,14 +1,17 @@
 import UIKit
 import Yosemite
-
+import WordPressUI
 
 /// ProductTagsViewController: Displays the list of ProductTag associated to the active Site and to the specific product.
 ///
-final class ProductTagsViewController: UIViewController {
+final class ProductTagsViewController: UIViewController, GhostableViewController {
 
     @IBOutlet private weak var tableView: UITableView!
     @IBOutlet private weak var textView: UITextView!
     @IBOutlet private var separatorView: UIView!
+
+    lazy var ghostTableViewController = GhostTableViewController(options: GhostTableViewOptions(cellClass: WooBasicTableViewCell.self,
+                                                                                                isScrollEnabled: false))
 
     private let product: Product
 
@@ -19,7 +22,7 @@ final class ProductTagsViewController: UIViewController {
         return resultController.fetchedObjects
     }
 
-    private var dataSource: ProductTagsDataSource = LoadingDataSource() {
+    private var dataSource: ProductTagsDataSource? = nil {
         didSet {
             tableView.dataSource = dataSource
             tableView.reloadData()
@@ -63,6 +66,7 @@ final class ProductTagsViewController: UIViewController {
         configureMainView()
         configureTextView()
         configureSeparator()
+        registerTableViewCells()
         configureTableView()
         startListeningToNotifications()
 
@@ -94,7 +98,6 @@ private extension ProductTagsViewController {
     func configureNavigationBar() {
         title = Strings.title
 
-        removeNavigationBackBarButtonText()
         configureRightBarButtonItemAsSave()
     }
 
@@ -127,6 +130,7 @@ private extension ProductTagsViewController {
         textView.autocorrectionType = .yes
         textView.autocapitalizationType = .none
         textView.font = .body
+        textView.adjustsFontForContentSizeCategory = true
         textView.textColor = .text
         textView.isScrollEnabled = false
         // Padding already provided by readable margins
@@ -142,7 +146,6 @@ private extension ProductTagsViewController {
     }
 
     func configureTableView() {
-        registerTableViewCells()
         // The datasource will be dynamically assigned on variable `dataSource`
         tableView.delegate = self
 
@@ -204,7 +207,7 @@ extension ProductTagsViewController: KeyboardScrollable {
 //
 private extension ProductTagsViewController {
     func loadTags() {
-        dataSource = LoadingDataSource()
+        displayGhostContent(over: tableView)
 
         let action = ProductTagAction.synchronizeAllProductTags(siteID: product.siteID) { [weak self] error in
             if let error = error {
@@ -223,6 +226,7 @@ private extension ProductTagsViewController {
     }
 
     func tagsLoaded(tags: [String]) {
+        removeGhostContent()
         dataSource = SuggestionsDataSource(suggestions: tags,
                                            selectedTags: completeTags,
                                            searchQuery: partialTag)
@@ -271,7 +275,7 @@ private extension ProductTagsViewController {
     func tagsFailedLoading() {
         DDLogError("Error loading product tags")
         dataSource = FailureDataSource()
-        UIApplication.shared.currentKeyWindow?.endEditing(true)
+        view.endEditing(true)
         let errorMessage = Strings.errorLoadingTags
         let notice = Notice(title: errorMessage, feedbackType: .error)
         ServiceLocator.noticePresenter.enqueue(notice: notice)
@@ -422,8 +426,6 @@ extension ProductTagsViewController: UITableViewDelegate {
         switch tableView.dataSource {
         case is FailureDataSource:
             loadTags()
-        case is LoadingDataSource:
-            return
         case is SuggestionsDataSource:
             suggestionTapped(cell: tableView.cellForRow(at: indexPath))
         default:

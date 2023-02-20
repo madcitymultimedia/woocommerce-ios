@@ -1,10 +1,14 @@
 import WordPressUI
 import SafariServices
+import WordPressAuthenticator
 
-public extension FancyAlertViewController {
-    static func makeWhatIsJetpackAlertController() -> FancyAlertViewController {
-        let dismissButton = makeDismissButtonConfig()
-        let moreInfoButton = makeMoreInfoButtonConfig()
+extension FancyAlertViewController {
+    static func makeWhatIsJetpackAlertController(analytics: Analytics) -> FancyAlertViewController {
+        let dismissButton = FancyAlertViewController.Config.ButtonConfig(Localization.dismissButton) { controller, _ in
+            controller.dismiss(animated: true)
+            analytics.track(.loginWhatIsJetpackHelpScreenOkButtonTapped)
+        }
+        let moreInfoButton = makeLearnMoreAboutJetpackButtonConfig(analytics: analytics)
         let config = FancyAlertViewController.Config(titleText: Localization.whatIsJetpack,
                                                      bodyText: Localization.whatIsJetpackLongDescription,
                                                      headerImage: .whatIsJetpackImage,
@@ -18,9 +22,10 @@ public extension FancyAlertViewController {
         return controller
     }
 
-    static func makeNeedHelpFindingEmailAlertController() -> FancyAlertViewController {
+    static func makeNeedHelpFindingEmailAlertController(screen: CustomHelpCenterContent.Screen? = nil) -> FancyAlertViewController {
         let dismissButton = makeDismissButtonConfig()
-        let moreHelpButton = makeNeedMoreHelpButton()
+        let customHelpCenterContent = screen.map { CustomHelpCenterContent(screen: $0, flow: AuthenticatorAnalyticsTracker.shared.state.lastFlow) }
+        let moreHelpButton = makeNeedMoreHelpButton(customHelpCenterContent: customHelpCenterContent)
         let config = FancyAlertViewController.Config(titleText: Localization.whatEmailDoIUse,
                                                      bodyText: Localization.whatEmailDoIUseLongDescription,
                                                      headerImage: nil,
@@ -34,6 +39,20 @@ public extension FancyAlertViewController {
         return controller
 
     }
+
+    static func makeConnectAccountToWPComSiteAlert() -> FancyAlertViewController {
+        let dismissButton = makeDismissButtonConfig()
+        let config = FancyAlertViewController.Config(titleText: Localization.connectToWPComSite,
+                                                     bodyText: Localization.connectToWPComSiteDescription,
+                                                     headerImage: nil,
+                                                     dividerPosition: .top,
+                                                     defaultButton: dismissButton,
+                                                     cancelButton: nil,
+                                                     dismissAction: {})
+
+        let controller = FancyAlertViewController.controllerWithConfiguration(configuration: config)
+        return controller
+    }
 }
 
 
@@ -46,7 +65,7 @@ private extension FancyAlertViewController {
 
         static let whatIsJetpackLongDescription = NSLocalizedString(
             "Jetpack is a free WordPress plugin that connects your store with tools needed to give you the best mobile experience, "
-            + "including push notifications and stats",
+            + "including push notifications and stats.",
             comment: "Long description of what Jetpack is. Presented when users attempt to log in without Jetpack installed or connected"
         )
 
@@ -76,6 +95,18 @@ private extension FancyAlertViewController {
             "Need more help?",
             comment: "Title of button to learn more presented when users attempt to log in with an email address that does not match a WP.com account"
         )
+
+        static let connectToWPComSite = NSLocalizedString(
+            "Connecting to a WordPress.com site",
+            comment: "Title of alert for suggestion on how to connect to a WP.com site" +
+            "Presented when a user logs in with an email that does not have access to a WP.com site"
+        )
+
+        static let connectToWPComSiteDescription = NSLocalizedString(
+            "Please contact the site owner for an invitation to the site as a shop manager or administrator to use the app.",
+            comment: "Description of alert for suggestion on how to connect to a WP.com site" +
+            "Presented when a user logs in with an email that does not have access to a WP.com site"
+        )
     }
 
     enum Strings {
@@ -93,30 +124,36 @@ private extension FancyAlertViewController {
         }
     }
 
-    static func makeMoreInfoButtonConfig() -> FancyAlertViewController.Config.ButtonConfig {
+    static func makeLearnMoreAboutJetpackButtonConfig(analytics: Analytics) -> FancyAlertViewController.Config.ButtonConfig {
         return FancyAlertViewController.Config.ButtonConfig(Localization.learnMore) { controller, _ in
             guard let url = URL(string: Strings.whatsJetpackURLString) else {
                 return
             }
 
-            let safariViewController = SFSafariViewController(url: url)
-            safariViewController.modalPresentationStyle = .pageSheet
-            controller.present(safariViewController, animated: true)
+            WebviewHelper.launch(url, with: controller)
+
+            analytics.track(.loginWhatIsJetpackHelpScreenLearnMoreButtonTapped)
         }
     }
 
-    static func makeNeedMoreHelpButton() -> FancyAlertViewController.Config.ButtonConfig {
+    static func makeNeedMoreHelpButton(customHelpCenterContent: CustomHelpCenterContent? = nil) -> FancyAlertViewController.Config.ButtonConfig {
         return FancyAlertViewController.Config.ButtonConfig(Localization.needMoreHelp) { controller, _ in
             let identifier = HelpAndSupportViewController.classNameWithoutNamespaces
-            guard let supportViewController = UIStoryboard
-                    .dashboard
-                    .instantiateViewController(withIdentifier: identifier) as? HelpAndSupportViewController else {
-                return
-            }
+            let supportViewController = UIStoryboard.dashboard.instantiateViewController(identifier: identifier,
+                                                                                         creator: { coder -> HelpAndSupportViewController? in
+                guard let customHelpCenterContent = customHelpCenterContent else {
+                    /// Returning nil as we don't need to customise the HelpAndSupportViewController
+                    /// In this case `instantiateViewController` method will use the default `HelpAndSupportViewController` created from storyboard.
+                    ///
+                    return nil
+                }
+
+                return HelpAndSupportViewController(customHelpCenterContent: customHelpCenterContent, coder: coder)
+            })
 
             supportViewController.displaysDismissAction = true
 
-            let navController = UINavigationController(rootViewController: supportViewController)
+            let navController = WooNavigationController(rootViewController: supportViewController)
             navController.modalPresentationStyle = .formSheet
 
             controller.present(navController, animated: true, completion: nil)

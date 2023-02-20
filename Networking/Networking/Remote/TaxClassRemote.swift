@@ -1,5 +1,4 @@
 import Foundation
-import Alamofire
 
 /// Tax Class: Remote Endpoints
 ///
@@ -17,7 +16,12 @@ public class TaxClassRemote: Remote {
                                 completion: @escaping ([TaxClass]?, Error?) -> Void) {
 
         let path = Path.taxes + "/classes"
-        let request = JetpackRequest(wooApiVersion: .mark3, method: .get, siteID: siteID, path: path, parameters: nil)
+        let request = JetpackRequest(wooApiVersion: .mark3,
+                                     method: .get,
+                                     siteID: siteID,
+                                     path: path,
+                                     parameters: nil,
+                                     availableAsRESTRequest: true)
         let mapper = TaxClassListMapper(siteID: siteID)
 
         enqueue(request, mapper: mapper, completion: completion)

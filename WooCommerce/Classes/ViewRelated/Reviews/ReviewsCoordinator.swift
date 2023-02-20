@@ -1,6 +1,6 @@
+import Combine
 import Foundation
 import UIKit
-import Observables
 
 import enum Yosemite.ProductReviewAction
 import enum Yosemite.NotificationAction
@@ -10,19 +10,18 @@ import protocol Yosemite.StoresManager
 /// Coordinator for the Reviews tab.
 ///
 final class ReviewsCoordinator: Coordinator {
-    var navigationController: UINavigationController
+    let navigationController: UINavigationController
 
     private let pushNotificationsManager: PushNotesManager
     private let storesManager: StoresManager
     private let noticePresenter: NoticePresenter
     private let switchStoreUseCase: SwitchStoreUseCaseProtocol
 
-    private var observationToken: ObservationToken?
+    private var notificationsSubscription: AnyCancellable?
 
     private let willPresentReviewDetailsFromPushNotification: () -> Void
 
-    init(siteID: Int64,
-         navigationController: UINavigationController,
+    init(navigationController: UINavigationController,
          pushNotificationsManager: PushNotesManager = ServiceLocator.pushNotesManager,
          storesManager: StoresManager = ServiceLocator.stores,
          noticePresenter: NoticePresenter = ServiceLocator.noticePresenter,
@@ -34,31 +33,39 @@ final class ReviewsCoordinator: Coordinator {
         self.noticePresenter = noticePresenter
         self.switchStoreUseCase = switchStoreUseCase
         self.willPresentReviewDetailsFromPushNotification = willPresentReviewDetailsFromPushNotification
-
         self.navigationController = navigationController
-        navigationController.viewControllers = [ReviewsViewController(siteID: siteID)]
     }
 
-    convenience init(siteID: Int64, navigationController: UINavigationController, willPresentReviewDetailsFromPushNotification: @escaping () -> Void) {
+    convenience init(navigationController: UINavigationController, willPresentReviewDetailsFromPushNotification: @escaping () -> Void) {
         let storesManager = ServiceLocator.stores
-        self.init(siteID: siteID,
-                  navigationController: navigationController,
+        self.init(navigationController: navigationController,
                   storesManager: storesManager,
                   switchStoreUseCase: SwitchStoreUseCase(stores: storesManager),
                   willPresentReviewDetailsFromPushNotification: willPresentReviewDetailsFromPushNotification)
     }
 
     deinit {
-        observationToken?.cancel()
+        notificationsSubscription?.cancel()
     }
 
     func start() {
-        observationToken = pushNotificationsManager.inactiveNotifications.subscribe { [weak self] in
-            self?.handleInactiveNotification($0)
+        // No-op: please call `activate(siteID:)` instead when the reviews tab is configured.
+    }
+
+    /// Replaces `start()` because the reviews tab's navigation stack could be updated multiple times when site ID changes.
+    func activate(siteID: Int64) {
+        navigationController.viewControllers = [ReviewsViewController(siteID: siteID)]
+
+        if notificationsSubscription == nil {
+            notificationsSubscription = Publishers
+                .Merge(pushNotificationsManager.inactiveNotifications, pushNotificationsManager.foregroundNotificationsToView)
+                .sink { [weak self] in
+                    self?.handleNotification($0)
+                }
         }
     }
 
-    private func handleInactiveNotification(_ notification: PushNotification) {
+    private func handleNotification(_ notification: PushNotification) {
         guard notification.kind == .comment else {
             return
         }
@@ -83,13 +90,14 @@ final class ReviewsCoordinator: Coordinator {
                         return
                     }
 
+                    ServiceLocator.analytics.track(.reviewOpen)
                     self.willPresentReviewDetailsFromPushNotification()
                     self.pushReviewDetailsViewController(using: parcel)
 
                     if siteChanged {
-                        let presenter = SwitchStoreNoticePresenter(sessionManager: self.storesManager.sessionManager,
+                        let presenter = SwitchStoreNoticePresenter(siteID: Int64(siteID),
                                                                    noticePresenter: self.noticePresenter)
-                        presenter.presentStoreSwitchedNotice(configuration: .switchingStores)
+                        presenter.presentStoreSwitchedNoticeWhenSiteIsAvailable(configuration: .switchingStores)
                     }
                 }
             }

@@ -1,12 +1,14 @@
 import Foundation
+#if !targetEnvironment(macCatalyst)
 import SupportSDK
 import ZendeskCoreSDK
 import CommonUISDK // Zendesk UI SDK
+#endif
 import WordPressShared
 import CoreTelephony
 import SafariServices
 import Yosemite
-
+import Experiments
 
 extension NSNotification.Name {
     static let ZDPNReceived = NSNotification.Name(rawValue: "ZDPNReceived")
@@ -18,22 +20,294 @@ extension NSNotification.Name {
 /// This is primarily used for testability. Not all methods in `ZendeskManager` are defined but
 /// feel free to add them when needed.
 ///
-protocol ZendeskManagerProtocol {
+protocol ZendeskManagerProtocol: SupportManagerAdapter {
+    typealias onUserInformationCompletion = (_ success: Bool, _ email: String?) -> Void
+
+    func observeStoreSwitch()
+
     /// Displays the Zendesk New Request view from the given controller, for users to submit new tickets.
     ///
     func showNewRequestIfPossible(from controller: UIViewController, with sourceTag: String?)
+    func showNewRequestIfPossible(from controller: UIViewController)
+
+    /// Displays a Zendesk New Request view from the given controller, tagged to show in the WCPay queues, for users to submit new tickets.
+    ///
+    func showNewWCPayRequestIfPossible(from controller: UIViewController, with sourceTag: String?)
+    func showNewWCPayRequestIfPossible(from controller: UIViewController)
+
+    /// Creates a Zendesk Identity to be able to submit support request tickets.
+    /// Uses the provided `ViewController` to present an alert for requesting email address when required.
+    ///
+    func createIdentity(presentIn viewController: UIViewController, completion: @escaping (Bool) -> Void)
+
+    /// Creates a support request using the API-Providers SDK.
+    ///
+    func createSupportRequest(formID: Int64,
+                              customFields: [Int64: String],
+                              tags: [String],
+                              subject: String,
+                              description: String,
+                              onCompletion: @escaping (Result<Void, Error>) -> Void)
+
+    var zendeskEnabled: Bool { get }
+    func userSupportEmail() -> String?
+    func showHelpCenter(from controller: UIViewController)
+    func showTicketListIfPossible(from controller: UIViewController, with sourceTag: String?)
+    func showTicketListIfPossible(from controller: UIViewController)
+    func showSupportEmailPrompt(from controller: UIViewController, completion: @escaping onUserInformationCompletion)
+    func getTags(supportSourceTag: String?) -> [String]
+    func fetchSystemStatusReport()
+    func initialize()
+    func reset()
+
+    /// To Refactor: These methods would end-up living outside this class. Exposing them here temporarily.
+    /// https://github.com/woocommerce/woocommerce-ios/issues/8795
+    ///
+    func formID() -> Int64
+    func wcPayFormID() -> Int64
+
+    func generalTags() -> [String]
+    func wcPayTags() -> [String]
+
+    func generalCustomFields() -> [Int64: String]
+    func wcPayCustomFields() -> [Int64: String]
 }
+
+struct NoZendeskManager: ZendeskManagerProtocol {
+    func observeStoreSwitch() {
+        // no-op
+    }
+
+    func showNewRequestIfPossible(from controller: UIViewController) {
+        // no-op
+    }
+
+    func showNewWCPayRequestIfPossible(from controller: UIViewController) {
+        // no-op
+    }
+
+    func showNewRequestIfPossible(from controller: UIViewController, with sourceTag: String?) {
+        // no-op
+    }
+
+    func showNewWCPayRequestIfPossible(from controller: UIViewController, with sourceTag: String?) {
+        // no-op
+    }
+
+    func createIdentity(presentIn viewController: UIViewController, completion: @escaping (Bool) -> Void) {
+        // no-op
+    }
+
+    func createSupportRequest(formID: Int64,
+                              customFields: [Int64: String],
+                              tags: [String],
+                              subject: String,
+                              description: String,
+                              onCompletion: @escaping (Result<Void, Error>) -> Void) {
+        // no-op
+    }
+
+    var zendeskEnabled = false
+
+    func userSupportEmail() -> String? {
+        return nil
+    }
+
+    func showHelpCenter(from controller: UIViewController) {
+        // no-op
+    }
+
+    func showTicketListIfPossible(from controller: UIViewController, with sourceTag: String?) {
+        // no-op
+    }
+
+    func showTicketListIfPossible(from controller: UIViewController) {
+        // no-op
+    }
+
+    func showSupportEmailPrompt(from controller: UIViewController, completion: @escaping onUserInformationCompletion) {
+        // no-op
+    }
+
+    func getTags(supportSourceTag: String?) -> [String] {
+        []
+    }
+
+    func fetchSystemStatusReport() {
+        // no-op
+    }
+
+    func initialize() {
+        // no-op
+    }
+
+    func reset() {
+        // no-op
+    }
+}
+
+/// To Refactor: These methods would end-up living outside this class. Exposing them here temporarily.
+/// https://github.com/woocommerce/woocommerce-ios/issues/8795
+///
+extension NoZendeskManager {
+    func formID() -> Int64 {
+        .zero
+    }
+
+    func wcPayFormID() -> Int64 {
+        .zero
+    }
+
+    func generalTags() -> [String] {
+        []
+    }
+
+    func wcPayTags() -> [String] {
+        []
+    }
+
+    func generalCustomFields() -> [Int64: String] {
+        [:]
+    }
+
+    func wcPayCustomFields() -> [Int64: String] {
+        [:]
+    }
+}
+
+extension NoZendeskManager: SupportManagerAdapter {
+    /// Executed whenever the app receives a Push Notifications Token.
+    ///
+    func deviceTokenWasReceived(deviceToken: String) {
+        // no-op
+    }
+
+    /// Executed whenever the app should unregister for Remote Notifications.
+    ///
+    func unregisterForRemoteNotifications() {
+        // no-op
+    }
+
+    /// Executed whenever the app receives a Remote Notification.
+    ///
+    func pushNotificationReceived() {
+        // no-op
+    }
+
+    /// Executed whenever the a user has tapped on a Remote Notification.
+    ///
+    func displaySupportRequest(using userInfo: [AnyHashable: Any]) {
+        // no-op
+    }
+}
+
+struct ZendeskProvider {
+    /// Shared Instance
+    ///
+    #if !targetEnvironment(macCatalyst)
+    static let shared: ZendeskManagerProtocol = ZendeskManager()
+    #else
+    static let shared: ZendeskManagerProtocol = NoZendeskManager()
+    #endif
+}
+
 
 /// This class provides the functionality to communicate with Zendesk for Help Center and support ticket interaction,
 /// as well as displaying views for the Help Center, new tickets, and ticket list.
 ///
+#if !targetEnvironment(macCatalyst)
 final class ZendeskManager: NSObject, ZendeskManagerProtocol {
+    private let stores = ServiceLocator.stores
+    private let storageManager = ServiceLocator.storageManager
 
-    /// Shared Instance
+    private let isSSRFeatureFlagEnabled = DefaultFeatureFlagService().isFeatureFlagEnabled(.systemStatusReportInSupportRequest)
+
+    /// Controller for fetching site plugins from Storage
     ///
-    static let shared = ZendeskManager()
+    private lazy var pluginResultsController: ResultsController<StorageSitePlugin> = createPluginResultsController()
 
-    typealias onUserInformationCompletion = (_ success: Bool, _ email: String?) -> Void
+    /// Returns a `pluginResultsController` using the latest selected site ID for predicate
+    ///
+    private func createPluginResultsController() -> ResultsController<StorageSitePlugin> {
+        var sitePredicate: NSPredicate? = nil
+        if let siteID = stores.sessionManager.defaultSite?.siteID {
+            sitePredicate = NSPredicate(format: "siteID == %lld", siteID)
+        } else {
+            DDLogError("ZendeskManager: No siteID found when attempting to initialize Plugins Results predicate.")
+        }
+
+        let pluginStatusDescriptor = [NSSortDescriptor(keyPath: \StorageSitePlugin.status, ascending: true)]
+
+        return ResultsController(storageManager: storageManager,
+                                 matching: sitePredicate,
+                                 sortedBy: pluginStatusDescriptor)
+    }
+
+    func observeStoreSwitch() {
+        pluginResultsController = createPluginResultsController()
+        do {
+            try pluginResultsController.performFetch()
+        } catch {
+            DDLogError("ZendeskManager: Unable to update plugin results")
+        }
+    }
+
+    /// List of tags that reflect Stripe and WCPay plugin statuses
+    ///
+    private var ippPluginStatuses: [String] {
+        var ippTags = [PluginStatus]()
+        if let stripe = pluginResultsController.fetchedObjects.first(where: { $0.plugin == PluginSlug.stripe }) {
+            if stripe.status == .active {
+                ippTags.append(.stripeInstalledAndActivated)
+            } else if stripe.status == .inactive {
+                ippTags.append(.stripeInstalledButNotActivated)
+            }
+        } else {
+            ippTags.append(.stripeNotInstalled)
+        }
+        if let wcpay = pluginResultsController.fetchedObjects.first(where: { $0.plugin == PluginSlug.wcpay }) {
+            if wcpay.status == .active {
+                ippTags.append(.wcpayInstalledAndActivated)
+            } else if wcpay.status == .inactive {
+                ippTags.append(.wcpayInstalledButNotActivated)
+            }
+        }
+        else {
+            ippTags.append(.wcpayNotInstalled)
+        }
+        return ippTags.map { $0.rawValue }
+    }
+
+    /// Instantiates the SystemStatusReportViewModel as soon as the Zendesk instance needs it
+    /// This generally happens in the SettingsViewModel if we need to fetch the site's System Status Report
+    ///
+    private lazy var systemStatusReportViewModel: SystemStatusReportViewModel = SystemStatusReportViewModel(
+        siteID: ServiceLocator.stores.sessionManager.defaultSite?.siteID ?? 0
+    )
+
+    /// Formatted system status report to be displayed on-screen
+    ///
+    private var systemStatusReport: String {
+        systemStatusReportViewModel.statusReport
+    }
+
+    /// Handles fetching the site's System Status Report
+    ///
+    func fetchSystemStatusReport() {
+        systemStatusReportViewModel.fetchReport()
+    }
+
+    func showNewRequestIfPossible(from controller: UIViewController) {
+        showNewRequestIfPossible(from: controller, with: nil)
+    }
+
+    func showNewWCPayRequestIfPossible(from controller: UIViewController) {
+        showNewWCPayRequestIfPossible(from: controller, with: nil)
+    }
+
+    func showTicketListIfPossible(from controller: UIViewController) {
+        showTicketListIfPossible(from: controller, with: nil)
+    }
 
     /// Indicates if Zendesk is Enabled (or not)
     ///
@@ -70,11 +344,15 @@ final class ZendeskManager: NSObject, ZendeskManagerProtocol {
         return ZDKPushProvider(zendesk: zendesk)
     }
 
-
     /// Designated Initialier
     ///
-    private override init() {
+    fileprivate override init() {
         super.init()
+        do {
+            try pluginResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch plugins from storage: \(error)")
+        }
         observeZendeskNotifications()
     }
 
@@ -114,17 +392,14 @@ final class ZendeskManager: NSObject, ZendeskManagerProtocol {
     /// For now, link to the online help documentation
     ///
     func showHelpCenter(from controller: UIViewController) {
-        let safariViewController = SFSafariViewController(url: WooConstants.URLs.helpCenter.asURL())
-        safariViewController.modalPresentationStyle = .pageSheet
-        controller.present(safariViewController, animated: true, completion: nil)
+        WebviewHelper.launch(WooConstants.URLs.helpCenter.asURL(), with: controller)
 
         ServiceLocator.analytics.track(.supportHelpCenterViewed)
     }
 
     /// Displays the Zendesk New Request view from the given controller, for users to submit new tickets.
     ///
-    func showNewRequestIfPossible(from controller: UIViewController, with sourceTag: String? = nil) {
-
+    func showNewRequestIfPossible(from controller: UIViewController, with sourceTag: String?) {
         createIdentity(presentIn: controller) { success in
             guard success else {
                 return
@@ -138,9 +413,92 @@ final class ZendeskManager: NSObject, ZendeskManagerProtocol {
         }
     }
 
+    /// Displays a Zendesk New Request view from the given controller, tagged to show in the WCPay queues, for users to submit new tickets.
+    ///
+    func showNewWCPayRequestIfPossible(from controller: UIViewController, with sourceTag: String?) {
+        createIdentity(presentIn: controller) { success in
+            guard success else {
+                return
+            }
+
+            ServiceLocator.analytics.track(.supportNewRequestViewed)
+
+            let newRequestConfig = self.createWCPayRequest(supportSourceTag: sourceTag)
+            let newRequestController = RequestUi.buildRequestUi(with: [newRequestConfig])
+            self.showZendeskView(newRequestController, from: controller)
+        }
+    }
+
+    /// Creates a Zendesk Identity to be able to submit support request tickets.
+    /// Uses the provided `ViewController` to present an alert for requesting email address when required.
+    ///
+    func createIdentity(presentIn viewController: UIViewController, completion: @escaping (Bool) -> Void) {
+
+        // If we already have an identity, do nothing.
+        guard haveUserIdentity == false else {
+            DDLogDebug("Using existing Zendesk identity: \(userEmail ?? ""), \(userName ?? "")")
+            registerDeviceTokenIfNeeded()
+            completion(true)
+            return
+        }
+
+        /*
+         1. Attempt to get user information from User Defaults.
+         2. If we don't have the user's information yet, attempt to get it from the account/site.
+         3. Prompt the user for email & name, pre-populating with user information obtained in step 1.
+         4. Create Zendesk identity with user information.
+         */
+
+        if getUserProfile() {
+            createZendeskIdentity { success in
+                guard success else {
+                    DDLogInfo("Creating Zendesk identity failed.")
+                    completion(false)
+                    return
+                }
+                DDLogDebug("Using User Defaults for Zendesk identity.")
+                self.haveUserIdentity = true
+                self.registerDeviceTokenIfNeeded()
+                completion(true)
+                return
+            }
+        }
+
+        getUserInformationAndShowPrompt(withName: true, from: viewController) { (success, _) in
+            if success {
+                self.registerDeviceTokenIfNeeded()
+            }
+
+            completion(success)
+        }
+    }
+
+    /// Creates a support request using the API-Providers SDK.
+    ///
+    func createSupportRequest(formID: Int64,
+                              customFields: [Int64: String],
+                              tags: [String],
+                              subject: String,
+                              description: String,
+                              onCompletion: @escaping (Result<Void, Error>) -> Void) {
+
+        let requestProvider = ZDKRequestProvider()
+        let request = createAPIRequest(formID: formID, customFields: customFields, tags: tags, subject: subject, description: description)
+        requestProvider.createRequest(request) { _, error in
+            // `requestProvider.createRequest` invokes it's completion block on a background thread when the request creation fails.
+            // Lets make sure we always dispatch the completion block on the main queue.
+            DispatchQueue.main.async {
+                if let error {
+                    return onCompletion(.failure(error))
+                }
+                onCompletion(.success(()))
+            }
+        }
+    }
+
     /// Displays the Zendesk Request List view from the given controller, allowing user to access their tickets.
     ///
-    func showTicketListIfPossible(from controller: UIViewController, with sourceTag: String? = nil) {
+    func showTicketListIfPossible(from controller: UIViewController, with sourceTag: String?) {
 
         createIdentity(presentIn: controller) { success in
             guard success else {
@@ -196,24 +554,86 @@ final class ZendeskManager: NSObject, ZendeskManagerProtocol {
     /// The SDK tag is used in a trigger and displays tickets in Woo > Mobile Apps New.
     ///
     func getTags(supportSourceTag: String?) -> [String] {
-        var tags = [Constants.platformTag, Constants.sdkTag, Constants.jetpackTag]
+        let tags = [Constants.platformTag, Constants.sdkTag, Constants.jetpackTag] + ippPluginStatuses
+        return decorateTags(tags: tags, supportSourceTag: supportSourceTag)
+    }
+
+    func getWCPayTags(supportSourceTag: String?) -> [String] {
+        let tags = [Constants.platformTag,
+                    Constants.sdkTag,
+                    Constants.paymentsProduct,
+                    Constants.paymentsCategory,
+                    Constants.paymentsSubcategory,
+                    Constants.paymentsProductArea]
+
+        return decorateTags(tags: tags, supportSourceTag: supportSourceTag)
+    }
+
+    func decorateTags(tags: [String], supportSourceTag: String?) -> [String] {
         guard let site = ServiceLocator.stores.sessionManager.defaultSite else {
             return tags
         }
 
-        if site.isWordPressStore == true {
-            tags.append(Constants.wpComTag)
+        var decoratedTags = tags
+
+        if site.isWordPressComStore == true {
+            decoratedTags.append(Constants.wpComTag)
         }
 
         if site.plan.isEmpty == false {
-            tags.append(site.plan)
+            decoratedTags.append(site.plan)
         }
 
         if let sourceTagOrigin = supportSourceTag, sourceTagOrigin.isEmpty == false {
-            tags.append(sourceTagOrigin)
+            decoratedTags.append(sourceTagOrigin)
         }
 
-        return tags
+        if ServiceLocator.stores.isAuthenticatedWithoutWPCom {
+            decoratedTags.append(Constants.authenticatedWithApplicationPasswordTag)
+        }
+
+        return decoratedTags
+    }
+}
+
+/// To Refactor: These methods would end-up living outside this class. Exposing them here temporarily.
+/// https://github.com/woocommerce/woocommerce-ios/issues/8795
+///
+extension ZendeskManager {
+    func formID() -> Int64 {
+        TicketFieldIDs.form
+    }
+
+    func wcPayFormID() -> Int64 {
+        TicketFieldIDs.paymentsForm
+    }
+
+    func generalTags() -> [String] {
+        getTags(supportSourceTag: nil)
+    }
+
+    func wcPayTags() -> [String] {
+        getWCPayTags(supportSourceTag: nil)
+    }
+
+    func generalCustomFields() -> [Int64: String] {
+        // Extracts the custom fields from the `createRequest` method
+        createRequest(supportSourceTag: nil).customFields.reduce([:]) { dict, field in
+            guard let value = field.value as? String else { return dict } // Guards that all values are string
+            var mutableDict = dict
+            mutableDict[field.fieldId] = value
+            return mutableDict
+        }
+    }
+
+    func wcPayCustomFields() -> [Int64: String] {
+        // Extracts the custom fields from the `createWCPayRequest` method.
+        createWCPayRequest(supportSourceTag: nil).customFields.reduce([:]) { dict, field in
+            guard let value = field.value as? String else { return dict } // Guards that all values are string
+            var mutableDict = dict
+            mutableDict[field.fieldId] = value
+            return mutableDict
+        }
     }
 }
 
@@ -280,6 +700,12 @@ extension ZendeskManager: SupportManagerAdapter {
     /// This handles Zendesk push notifications.
     ///
     func displaySupportRequest(using userInfo: [AnyHashable: Any]) {
+
+        // Prevent navigating to an individual ticker from a push notification as we won't support viewing individual tickets on the new Support Form.
+        if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests) {
+            return
+        }
+
         guard zendeskEnabled == true,
             let requestId = userInfo[PushKey.requestID] as? String else {
                 DDLogInfo("Zendesk push notification payload is invalid.")
@@ -317,6 +743,12 @@ extension ZendeskManager: SupportManagerAdapter {
     /// Delegate method for a received push notification
     ///
     func pushNotificationReceived() {
+        // Do not update the notification count when the new SupportForm is enabled
+        // because we can't clear it back as we won't allow navigating to individual tickets.
+        if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests) {
+            return
+        }
+
         unreadNotificationsCount += 1
         saveUnreadCount()
         postNotificationReceived()
@@ -327,47 +759,6 @@ extension ZendeskManager: SupportManagerAdapter {
 // MARK: - Private Extension
 //
 private extension ZendeskManager {
-
-    func createIdentity(presentIn viewController: UIViewController, completion: @escaping (Bool) -> Void) {
-
-        // If we already have an identity, do nothing.
-        guard haveUserIdentity == false else {
-            DDLogDebug("Using existing Zendesk identity: \(userEmail ?? ""), \(userName ?? "")")
-            registerDeviceTokenIfNeeded()
-            completion(true)
-            return
-        }
-
-        /*
-         1. Attempt to get user information from User Defaults.
-         2. If we don't have the user's information yet, attempt to get it from the account/site.
-         3. Prompt the user for email & name, pre-populating with user information obtained in step 1.
-         4. Create Zendesk identity with user information.
-         */
-
-        if getUserProfile() {
-            createZendeskIdentity { success in
-                guard success else {
-                    DDLogInfo("Creating Zendesk identity failed.")
-                    completion(false)
-                    return
-                }
-                DDLogDebug("Using User Defaults for Zendesk identity.")
-                self.haveUserIdentity = true
-                self.registerDeviceTokenIfNeeded()
-                completion(true)
-                return
-            }
-        }
-
-        getUserInformationAndShowPrompt(withName: true, from: viewController) { (success, _) in
-            if success {
-                self.registerDeviceTokenIfNeeded()
-            }
-
-            completion(success)
-        }
-    }
 
     func getUserInformationAndShowPrompt(withName: Bool, from viewController: UIViewController, completion: @escaping onUserInformationCompletion) {
         presentInController = viewController
@@ -430,27 +821,76 @@ private extension ZendeskManager {
     ///
     func createRequest(supportSourceTag: String?) -> RequestUiConfiguration {
 
-        let requestConfig = RequestUiConfiguration()
+        var logsFieldID: Int64 = TicketFieldIDs.legacyLogs
+        var systemStatusReportFieldID: Int64 = 0
+        if isSSRFeatureFlagEnabled {
+            /// If the feature flag is enabled, `legacyLogs` Field ID is used to send the SSR logs,
+            /// and `logs` Field ID is used to send the logs.
+            ///
+            logsFieldID = TicketFieldIDs.logs
+            systemStatusReportFieldID = TicketFieldIDs.legacyLogs
+        }
 
-        // Set Zendesk ticket form to use
-        requestConfig.ticketFormID = TicketFieldIDs.form as NSNumber
-
-        // Set form field values
         let ticketFields = [
             CustomField(fieldId: TicketFieldIDs.appVersion, value: Bundle.main.version),
             CustomField(fieldId: TicketFieldIDs.deviceFreeSpace, value: getDeviceFreeSpace()),
             CustomField(fieldId: TicketFieldIDs.networkInformation, value: getNetworkInformation()),
-            CustomField(fieldId: TicketFieldIDs.logs, value: getLogFile()),
+            CustomField(fieldId: logsFieldID, value: getLogFile()),
+            CustomField(fieldId: systemStatusReportFieldID, value: systemStatusReport),
             CustomField(fieldId: TicketFieldIDs.currentSite, value: getCurrentSiteDescription()),
             CustomField(fieldId: TicketFieldIDs.sourcePlatform, value: Constants.sourcePlatform),
             CustomField(fieldId: TicketFieldIDs.appLanguage, value: Locale.preferredLanguage),
             CustomField(fieldId: TicketFieldIDs.subcategory, value: Constants.subcategory)
         ].compactMap { $0 }
 
+        return createRequest(supportSourceTag: supportSourceTag,
+                             formID: TicketFieldIDs.form,
+                             ticketFields: ticketFields,
+                             tags: getTags(supportSourceTag: supportSourceTag))
+    }
+
+    func createWCPayRequest(supportSourceTag: String?) -> RequestUiConfiguration {
+
+        var logsFieldID: Int64 = TicketFieldIDs.legacyLogs
+        var systemStatusReportFieldID: Int64 = 0
+        if isSSRFeatureFlagEnabled {
+            /// If the feature flag is enabled, `legacyLogs` Field ID is used to send the SSR logs,
+            /// and `logs` Field ID is used to send the logs.
+            ///
+            logsFieldID = TicketFieldIDs.logs
+            systemStatusReportFieldID = TicketFieldIDs.legacyLogs
+        }
+
+        // Set form field values
+        let ticketFields = [
+            CustomField(fieldId: TicketFieldIDs.appVersion, value: Bundle.main.version),
+            CustomField(fieldId: TicketFieldIDs.deviceFreeSpace, value: getDeviceFreeSpace()),
+            CustomField(fieldId: TicketFieldIDs.networkInformation, value: getNetworkInformation()),
+            CustomField(fieldId: logsFieldID, value: getLogFile()),
+            CustomField(fieldId: systemStatusReportFieldID, value: systemStatusReport),
+            CustomField(fieldId: TicketFieldIDs.currentSite, value: getCurrentSiteDescription()),
+            CustomField(fieldId: TicketFieldIDs.sourcePlatform, value: Constants.sourcePlatform),
+            CustomField(fieldId: TicketFieldIDs.appLanguage, value: Locale.preferredLanguage),
+            CustomField(fieldId: TicketFieldIDs.category, value: Constants.paymentsCategory),
+            CustomField(fieldId: TicketFieldIDs.subcategory, value: Constants.paymentsSubcategory),
+        ].compactMap { $0 }
+
+        return createRequest(supportSourceTag: supportSourceTag,
+                             formID: TicketFieldIDs.paymentsForm,
+                             ticketFields: ticketFields,
+                             tags: getWCPayTags(supportSourceTag: supportSourceTag))
+    }
+
+    func createRequest(supportSourceTag: String?, formID: Int64, ticketFields: [CustomField], tags: [String]) -> RequestUiConfiguration {
+        let requestConfig = RequestUiConfiguration()
+
+        // Set Zendesk ticket form to use
+        requestConfig.ticketFormID = formID as NSNumber
+
         requestConfig.customFields = ticketFields
 
         // Set tags
-        requestConfig.tags = getTags(supportSourceTag: supportSourceTag)
+        requestConfig.tags = tags
 
         // Set the ticket subject
         requestConfig.subject = Constants.ticketSubject
@@ -460,6 +900,18 @@ private extension ZendeskManager {
         return requestConfig
     }
 
+    /// Creates a Zendesk Request to be consumed by a Request Provider.
+    ///
+    func createAPIRequest(formID: Int64, customFields: [Int64: String], tags: [String], subject: String, description: String) -> ZDKCreateRequest {
+        let request = ZDKCreateRequest()
+        request.ticketFormId = formID as NSNumber
+        request.customFields = customFields.map { CustomField(fieldId: $0, value: $1) }
+        request.tags = tags
+        request.subject = subject
+        request.requestDescription = description
+        return request
+    }
+
     // MARK: - View
     //
     func showZendeskView(_ zendeskView: UIViewController, from controller: UIViewController) {
@@ -467,10 +919,7 @@ private extension ZendeskManager {
 
         // If the controller is a UIViewController, set the modal display for iPad.
         if !controller.isKind(of: UINavigationController.self) && UIDevice.current.userInterfaceIdiom == .pad {
-            let navController = UINavigationController(rootViewController: zendeskView)
-            navController.modalPresentationStyle = .fullScreen
-            navController.modalTransitionStyle = .crossDissolve
-            controller.present(navController, animated: true)
+            presentZendeskViewModally(zendeskView, from: controller)
             return
         }
 
@@ -486,9 +935,21 @@ private extension ZendeskManager {
 
         if let navController = presentInController as? UINavigationController {
             navController.pushViewController(zendeskView, animated: true)
+            return
         }
+
+        presentZendeskViewModally(zendeskView, from: controller)
     }
 
+    private func presentZendeskViewModally(_ zendeskView: UIViewController, from controller: UIViewController) {
+        let navController = WooNavigationController(rootViewController: zendeskView)
+        // Keeping the modal fullscreen on iPad like previous implementation.
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            navController.modalPresentationStyle = .fullScreen
+            navController.modalTransitionStyle = .crossDissolve
+        }
+        controller.present(navController, animated: true)
+    }
 
     // MARK: - User Defaults
     //
@@ -654,12 +1115,13 @@ private extension ZendeskManager {
 
         // Name Text Field
         if withName {
-            alertController.addTextField { textField in
+            alertController.addTextField { [weak self] textField in
+                guard let self = self else { return }
                 textField.clearButtonMode = .always
                 textField.placeholder = LocalizedText.namePlaceholder
                 textField.text = self.userName
-                textField.delegate = ZendeskManager.shared
-                ZendeskManager.shared.alertNameField = textField
+                textField.delegate = self
+                self.alertNameField = textField
             }
         }
 
@@ -766,9 +1228,9 @@ private extension ZendeskManager {
     ///
     @objc func zendeskNotification(_ notification: Notification) {
         switch notification.name.rawValue {
-        case ZDKAPI_RequestSubmissionSuccess:
+        case ZDKAPI_RequestSubmissionSuccess where !ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests):
             ServiceLocator.analytics.track(.supportNewRequestCreated)
-        case ZDKAPI_RequestSubmissionError:
+        case ZDKAPI_RequestSubmissionError where !ServiceLocator.featureFlagService.isFeatureFlagEnabled(.supportRequests):
             ServiceLocator.analytics.track(.supportNewRequestFailed)
         case ZDKAPI_UploadAttachmentSuccess:
             ServiceLocator.analytics.track(.supportNewRequestFileAttached)
@@ -813,6 +1275,7 @@ private extension ZendeskManager {
         static let blogSeperator = "\n----------\n"
         static let jetpackTag = "jetpack"
         static let wpComTag = "wpcom"
+        static let authenticatedWithApplicationPasswordTag = "application_password_authenticated"
         static let logFieldCharacterLimit = 64000
         static let networkWiFi = "WiFi"
         static let networkWWAN = "Mobile"
@@ -826,21 +1289,31 @@ private extension ZendeskManager {
         static let nameFieldCharacterLimit = 50
         static let sourcePlatform = "mobile_-_woo_ios"
         static let subcategory = "WooCommerce Mobile Apps"
+        static let paymentsCategory = "support"
+        static let paymentsSubcategory = "payment"
+        static let paymentsProduct = "woocommerce_payments"
+        static let paymentsProductArea = "product_area_woo_payment_gateway"
     }
 
     // Zendesk expects these as NSNumber. However, they are defined as UInt64 to satisfy 32-bit devices (ex: iPhone 5).
     // Which means they then have to be converted to NSNumber when sending to Zendesk.
     struct TicketFieldIDs {
         static let form: Int64 = 360000010286
+        static let paymentsForm: Int64 = 189946
+        static let paymentsGroup: Int64 = 27709263
         static let appVersion: Int64 = 360000086866
         static let allBlogs: Int64 = 360000087183
         static let deviceFreeSpace: Int64 = 360000089123
         static let networkInformation: Int64 = 360000086966
-        static let logs: Int64 = 22871957
+        static let legacyLogs: Int64 = 22871957
+        static let logs: Int64 = 10901699622036
         static let currentSite: Int64 = 360000103103
         static let sourcePlatform: Int64 = 360009311651
         static let appLanguage: Int64 = 360008583691
+        static let category: Int64 = 25176003
         static let subcategory: Int64 = 25176023
+        static let product: Int64 = 25254766
+        static let productArea: Int64 = 360025069951
     }
 
     struct LocalizedText {
@@ -875,6 +1348,20 @@ private extension ZendeskManager {
     }
 }
 
+private extension ZendeskManager {
+    enum PluginSlug {
+        static let stripe = "woocommerce-gateway-stripe/woocommerce-gateway-stripe"
+        static let wcpay = "woocommerce-payments/woocommerce-payments"
+    }
+    enum PluginStatus: String {
+        case stripeNotInstalled = "woo_mobile_stripe_not_installed"
+        case stripeInstalledAndActivated = "woo_mobile_stripe_installed_and_activated"
+        case stripeInstalledButNotActivated = "woo_mobile_stripe_installed_and_not_activated"
+        case wcpayNotInstalled = "woo_mobile_wcpay_not_installed"
+        case wcpayInstalledAndActivated = "woo_mobile_wcpay_installed_and_activated"
+        case wcpayInstalledButNotActivated = "woo_mobile_wcpay_installed_and_not_activated"
+    }
+}
 
 // MARK: - UITextFieldDelegate
 //
@@ -890,3 +1377,4 @@ extension ZendeskManager: UITextFieldDelegate {
         return newLength <= Constants.nameFieldCharacterLimit
     }
 }
+#endif

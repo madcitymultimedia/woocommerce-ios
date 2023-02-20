@@ -23,17 +23,19 @@ struct TopBannerViewModel {
     ///
     struct ActionButton {
         let title: String
-        let action: () -> Void
+        let action: (_ sourceView: UIView) -> Void
     }
 
     enum BannerType {
         case normal
         case warning
+        case info
     }
 
     let title: String?
     let infoText: String?
     let icon: UIImage?
+    let iconTintColor: UIColor?
     let isExpanded: Bool
     let topButton: TopButtonType
     let actionButtons: [ActionButton]
@@ -42,6 +44,7 @@ struct TopBannerViewModel {
     init(title: String?,
          infoText: String?,
          icon: UIImage?,
+         iconTintColor: UIColor? = nil,
          isExpanded: Bool = true,
          topButton: TopButtonType,
          actionButtons: [ActionButton] = [],
@@ -49,6 +52,7 @@ struct TopBannerViewModel {
         self.title = title
         self.infoText = infoText
         self.icon = icon
+        self.iconTintColor = iconTintColor
         self.isExpanded = isExpanded
         self.topButton = topButton
         self.actionButtons = actionButtons

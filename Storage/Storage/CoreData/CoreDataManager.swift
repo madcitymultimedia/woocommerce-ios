@@ -1,5 +1,6 @@
 import Foundation
 import CoreData
+import WooFoundation
 
 
 /// CoreDataManager: Manages the entire CoreData Stack. Conforms to the StorageManager API.
@@ -39,10 +40,8 @@ public final class CoreDataManager: StorageManagerType {
         } catch {
             // We'll throw a fatalError() because we can't really proceed without a
             // ManagedObjectModel.
-            let message = "Failed to load models inventory using packageName \(name). Error: \(error)"
-            crashLogger.logMessageAndWait(message, properties: nil, level: .fatal)
-
-            fatalError(message)
+            let error = CoreDataManagerError.modelInventoryLoadingFailed(name, error)
+            crashLogger.logFatalErrorAndExit(error, userInfo: nil)
         }
     }
 
@@ -63,13 +62,22 @@ public final class CoreDataManager: StorageManagerType {
         return persistentContainer.viewContext
     }
 
+    /// Returns a shared derived storage instance dedicated for write operations.
+    ///
+    public lazy var writerDerivedStorage: StorageType = {
+        let childManagedObjectContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
+        childManagedObjectContext.parent = persistentContainer.viewContext
+        childManagedObjectContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
+        return childManagedObjectContext
+    }()
+
     /// Persistent Container: Holds the full CoreData Stack
     ///
     public lazy var persistentContainer: NSPersistentContainer = {
-        let migrationDebugMessages = migrateDataModelIfNecessary()
-
         let container = NSPersistentContainer(name: name, managedObjectModel: modelsInventory.currentModel)
         container.persistentStoreDescriptions = [storeDescription]
+
+        let migrationDebugMessages = migrateDataModelIfNecessary(using: container.persistentStoreCoordinator)
 
         container.loadPersistentStores { [weak self] (storeDescription, error) in
             guard let `self` = self, let persistentStoreLoadingError = error else {
@@ -91,22 +99,19 @@ public final class CoreDataManager: StorageManagerType {
 
             /// Retry!
             ///
-            container.loadPersistentStores { [weak self] (storeDescription, error) in
-                guard let error = error as NSError? else {
+            container.loadPersistentStores { [weak self] (storeDescription, underlyingError) in
+                guard let underlyingError = underlyingError as NSError? else {
                     return
                 }
 
-                let message = "☠️ [CoreDataManager] Recovery Failed!"
-
+                let error = CoreDataManagerError.recoveryFailed
                 let logProperties: [String: Any?] = ["persistentStoreLoadingError": persistentStoreLoadingError,
                                                      "persistentStoreRemovalError": persistentStoreRemovalError,
-                                                     "retryError": error,
+                                                     "retryError": underlyingError,
                                                      "appState": UIApplication.shared.applicationState.rawValue,
                                                      "migrationMessages": migrationDebugMessages]
-                self?.crashLogger.logMessageAndWait(message,
-                                                    properties: logProperties.compactMapValues { $0 },
-                                                    level: .fatal)
-                fatalError(message)
+                self?.crashLogger.logFatalErrorAndExit(error,
+                                                  userInfo: logProperties.compactMapValues { $0 })
             }
 
             let logProperties: [String: Any?] = ["persistentStoreLoadingError": persistentStoreLoadingError,
@@ -127,15 +132,6 @@ public final class CoreDataManager: StorageManagerType {
         persistentContainer.performBackgroundTask { context in
             closure(context as StorageType)
         }
-    }
-
-    /// Creates a new child MOC (with a private dispatch queue) whose parent is `viewStorage`.
-    ///
-    public func newDerivedStorage() -> StorageType {
-        let childManagedObjectContext = NSManagedObjectContext(concurrencyType: .privateQueueConcurrencyType)
-        childManagedObjectContext.parent = persistentContainer.viewContext
-        childManagedObjectContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        return childManagedObjectContext
     }
 
     /// Saves the derived storage. Note: the closure may be called on a different thread
@@ -182,13 +178,13 @@ public final class CoreDataManager: StorageManagerType {
                 viewContext.saveIfNeeded()
             }
         } catch {
-            fatalError("☠️ [CoreDataManager] Cannot delete stored objects! \(error)")
+            logErrorAndExit("☠️ [CoreDataManager] Cannot delete stored objects! \(error)")
         }
     }
 
     /// Migrates the current persistent store to the latest data model if needed.
     /// - Returns: an array of debug messages for logging. Please feel free to remove when #2371 is resolved.
-    private func migrateDataModelIfNecessary() -> [String] {
+    private func migrateDataModelIfNecessary(using coordinator: NSPersistentStoreCoordinator) -> [String] {
         var debugMessages = [String]()
 
         let migrationCheckMessage = "ℹ️ [CoreDataManager] Checking if migration is necessary."
@@ -196,7 +192,7 @@ public final class CoreDataManager: StorageManagerType {
         DDLogInfo(migrationCheckMessage)
 
         do {
-            let iterativeMigrator = CoreDataIterativeMigrator(modelsInventory: modelsInventory)
+            let iterativeMigrator = CoreDataIterativeMigrator(coordinator: coordinator, modelsInventory: modelsInventory)
             let (migrateResult, migrationDebugMessages) = try iterativeMigrator.iterativeMigrate(sourceStore: storeURL,
                                                                                                  storeType: NSSQLiteStoreType,
                                                                                                  to: modelsInventory.currentModel)
@@ -239,9 +235,27 @@ extension CoreDataManager {
     ///
     var storeURL: URL {
         guard let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            fatalError("Okay: Missing Documents Folder?")
+            logErrorAndExit("Okay: Missing Documents Folder?")
         }
 
         return url.appendingPathComponent(name + ".sqlite")
+    }
+}
+
+// MARK: - Errors
+//
+enum CoreDataManagerError: Error {
+    case modelInventoryLoadingFailed(String, Error)
+    case recoveryFailed
+}
+
+extension CoreDataManagerError: CustomStringConvertible {
+    var description: String {
+        switch self {
+        case .modelInventoryLoadingFailed(let name, let underlyingError):
+            return "Failed to load models inventory using packageName \(name). Error: \(underlyingError)"
+        case .recoveryFailed:
+            return "☠️ [CoreDataManager] Recovery Failed!"
+        }
     }
 }

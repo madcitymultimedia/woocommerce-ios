@@ -18,19 +18,12 @@ extension Array {
     var isNotEmpty: Bool {
         return !isEmpty
     }
-}
 
-
-// MARK: - Collection Helpers
-//
-extension Collection {
-    /// Returns the element at the specified index if it is within bounds, otherwise nil.
-    ///
-    subscript (safe index: Index) -> Element? {
-        return indices.contains(index) ? self[index] : nil
+    /// A Bool indicating if the collection has at least two elements
+    var containsMoreThanOne: Bool {
+        return count > 1
     }
 }
-
 
 // MARK: - Sequence Helpers
 //

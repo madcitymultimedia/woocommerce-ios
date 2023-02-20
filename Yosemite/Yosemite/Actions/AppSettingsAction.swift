@@ -1,5 +1,6 @@
 import Foundation
 import Storage
+import Networking
 
 // MARK: - AppSettingsAction: Defines all of the Actions supported by the AppSettingsStore.
 //
@@ -31,42 +32,42 @@ public enum AppSettingsAction: Action {
     ///
     case resetStoredProviders(onCompletion: ((Error?) -> Void)?)
 
-    // MARK: - Stats version
+    // MARK: - Orders Settings
 
-    /// Loads the stats version to be shown given the latest app settings associated with the `siteID`
+    /// Loads the orders settings
     ///
-    case loadInitialStatsVersionToShow(siteID: Int64,
-        onCompletion: (StatsVersion?) -> Void)
+    case loadOrdersSettings(siteID: Int64, onCompletion: (Result<StoredOrderSettings.Setting, Error>) -> Void)
 
-    /// Loads whether a stats verion banner should be shown
+    /// Add or Update orders settings
     ///
-    case loadStatsVersionBannerVisibility(banner: StatsVersionBannerVisibility.StatsVersionBanner, onCompletion: (Bool) -> Void)
+    case upsertOrdersSettings(siteID: Int64,
+                              orderStatusesFilter: [OrderStatusEnum]?,
+                              dateRangeFilter: OrderDateRangeFilter?,
+                              onCompletion: (Error?) -> Void)
 
-    /// Sets whether a stats version banner should be shown
+    /// Clears all the orders settings
     ///
-    case setStatsVersionBannerVisibility(banner: StatsVersionBannerVisibility.StatsVersionBanner, shouldShowBanner: Bool)
+    case resetOrdersSettings
 
-    /// Sets the last shown stats version associated with the `siteID`
-    ///
-    case setStatsVersionLastShown(siteID: Int64,
-        statsVersion: StatsVersion)
+    // MARK: - Products Settings
 
-    /// Clears all the states related to stats version
+    /// Loads the products settings
     ///
-    case resetStatsVersionStates
+    case loadProductsSettings(siteID: Int64, onCompletion: (Result<StoredProductSettings.Setting, Error>) -> Void)
 
-    /// Loads the user preferred Product feature switch given the latest app settings
+    /// Add or Update products settings
     ///
-    case loadProductsFeatureSwitch(onCompletion: (Bool) -> Void)
+    case upsertProductsSettings(siteID: Int64,
+                                sort: String? = nil,
+                                stockStatusFilter: ProductStockStatus? = nil,
+                                productStatusFilter: ProductStatus? = nil,
+                                productTypeFilter: ProductType? = nil,
+                                productCategoryFilter: ProductCategory? = nil,
+                                onCompletion: (Error?) -> Void)
 
-    /// Sets the user preferred Product feature switch
-    /// If on, Products M2 features are available
+    /// Clears all the products settings
     ///
-    case setProductsFeatureSwitch(isEnabled: Bool, onCompletion: () -> Void)
-
-    /// Clears all the app settings on feature switches
-    ///
-    case resetFeatureSwitches
+    case resetProductsSettings
 
     // MARK: - General App Settings
 
@@ -86,4 +87,127 @@ public enum AppSettingsAction: Action {
     /// Returns whether a specific feedback request should be shown to the user.
     ///
     case loadFeedbackVisibility(type: FeedbackType, onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Sets the state for the Order Add-ons beta feature switch.
+    ///
+    case setOrderAddOnsFeatureSwitchState(isEnabled: Bool, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Loads the most recent state for the Order Add-ons beta feature switch
+    ///
+    case loadOrderAddOnsSwitchState(onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Sets the state for the Product SKU Input Scanner beta feature switch.
+    ///
+    case setProductSKUInputScannerFeatureSwitchState(isEnabled: Bool, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Loads the most recent state for the Product SKU Input Scanner beta feature switch
+    ///
+    case loadProductSKUInputScannerFeatureSwitchState(onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Sets the state for the Coupon Management beta feature switch.
+    ///
+    case setCouponManagementFeatureSwitchState(isEnabled: Bool, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Loads the most recent state for the Coupon Management beta feature switch
+    ///
+    case loadCouponManagementFeatureSwitchState(onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Remember the given card reader (to support automatic reconnection)
+    /// where `cardReaderID` is a String e.g. "CHB204909005931"
+    ///
+    case rememberCardReader(cardReaderID: String, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Forget any remembered card reader (i.e. automatic reconnection is no longer desired)
+    ///
+    case forgetCardReader(onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Loads the most recently membered reader, if any (i.e. a reader that should be reconnected to automatically)
+    /// E.g.  "CHB204909005931"
+    ///
+    case loadCardReader(onCompletion: (Result<String?, Error>) -> Void)
+
+    /// Loads the persisted eligibility error information.
+    ///
+    case loadEligibilityErrorInfo(onCompletion: (Result<EligibilityErrorInfo, Error>) -> Void)
+
+    /// Saves an `EligibilityErrorInfo` locally.
+    /// There can only be one persisted instance. Subsequent calls will overwrite the existing data.
+    ///
+    case setEligibilityErrorInfo(errorInfo: EligibilityErrorInfo, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Clears the persisted eligibility error information.
+    ///
+    case resetEligibilityErrorInfo
+
+    /// Sets the last time when Jetpack benefits banner is dismissed in the Dashboard.
+    ///
+    case setJetpackBenefitsBannerLastDismissedTime(time: Date)
+
+    /// Loads the visibility of Jetpack benefits banner in the Dashboard based on the last dismissal time.
+    /// The banner is not shown for five days after the last time it is dismissed.
+    /// There are other conditions for showing the Jetpack banner, like when the site is Jetpack CP connected.
+    ///
+    case loadJetpackBenefitsBannerVisibility(currentTime: Date, calendar: Calendar, onCompletion: (Bool) -> Void)
+
+    // MARK: - General Store Settings
+
+    /// Sets telemetry availability status information.
+    ///
+    case setTelemetryAvailability(siteID: Int64, isAvailable: Bool)
+
+    /// Sets telemetry last reported time information.
+    ///
+    case setTelemetryLastReportedTime(siteID: Int64, time: Date)
+
+    /// Loads telemetry information - availability status and last reported time.
+    ///
+    case getTelemetryInfo(siteID: Int64, onCompletion: (Bool, Date?) -> Void)
+
+    /// Sets the last state of the simple payments taxes toggle for a provided store.
+    ///
+    case setSimplePaymentsTaxesToggleState(siteID: Int64, isOn: Bool, onCompletion: (Result<Void, Error>) -> Void)
+
+    /// Get the last state of the simple payments taxes toggle for a provided store.
+    ///
+    case getSimplePaymentsTaxesToggleState(siteID: Int64, onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Sets the preferred payment gateway for In-Person Payments
+    ///
+    case setPreferredInPersonPaymentGateway(siteID: Int64, gateway: String)
+
+    /// Gets the preferred payment gateway for In-Person Payments
+    ///
+    case getPreferredInPersonPaymentGateway(siteID: Int64, onCompletion: (String?) -> Void)
+
+    /// Forgets the preferred payment gateway for In-Person Payments
+    ///
+    case forgetPreferredInPersonPaymentGateway(siteID: Int64)
+
+    /// Clears all the products settings
+    ///
+    case resetGeneralStoreSettings
+
+    /// Marks the Enable Cash on Delivery In-Person Payments Onboarding step as skipped
+    ///
+    case setSkippedCashOnDeliveryOnboardingStep(siteID: Int64)
+
+    /// Gets whether the Enable Cash on Delivery In-Person Payments Onboarding step has been skipped
+    ///
+    case getSkippedCashOnDeliveryOnboardingStep(siteID: Int64, onCompletion: (Bool) -> Void)
+
+    // MARK: - Feature Announcement Card Visibility
+
+    case setFeatureAnnouncementDismissed(
+        campaign: FeatureAnnouncementCampaign,
+        remindAfterDays: Int?,
+        onCompletion: ((Result<Bool, Error>) -> ())?
+    )
+
+    case getFeatureAnnouncementVisibility(campaign: FeatureAnnouncementCampaign, onCompletion: (Result<Bool, Error>) -> ())
+
+    // MARK: - Stats Time Range Tab
+
+    case setLastSelectedStatsTimeRange(siteID: Int64, timeRange: StatsTimeRangeV4)
+
+    case loadLastSelectedStatsTimeRange(siteID: Int64, onCompletion: (StatsTimeRangeV4?) -> Void)
 }

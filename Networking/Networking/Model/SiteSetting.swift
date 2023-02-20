@@ -1,9 +1,9 @@
 import Foundation
-
+import Codegen
 
 /// Represents a specific setting entity for a specific site.
 ///
-public struct SiteSetting: Decodable {
+public struct SiteSetting: Decodable, Equatable, GeneratedFakeable, GeneratedCopiable {
     public let siteID: Int64
     public let settingID: String
     public let label: String
@@ -13,11 +13,11 @@ public struct SiteSetting: Decodable {
 
     /// OrderNote struct initializer.
     ///
-    public init(siteID: Int64, settingID: String, label: String, description: String, value: String, settingGroupKey: String) {
+    public init(siteID: Int64, settingID: String, label: String, settingDescription: String, value: String, settingGroupKey: String) {
         self.siteID = siteID
         self.settingID = settingID
         self.label = label
-        self.settingDescription = description
+        self.settingDescription = settingDescription
         self.value = value
         self.settingGroupKey = settingGroupKey
     }
@@ -36,21 +36,47 @@ public struct SiteSetting: Decodable {
         let settingID = try container.decode(String.self, forKey: .settingID)
         let label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
         let settingDescription = try container.decodeIfPresent(String.self, forKey: .settingDescription) ?? ""
-
-        // Note: `value` is a mixed type per the documentation — usually a String but could be an Array, Int, etc
-        // For the specific settings we are interested in, it is a String type.
-        // See: https://woocommerce.github.io/woocommerce-rest-api-docs/#setting-options for more details.
+        let responseType = try container.decodeIfPresent(ResponseType.self, forKey: .type) ?? .unknown
         var value = ""
-        if let stringValue = try? container.decode(String.self, forKey: .value) {
-            value = stringValue
-        } else {
-            DDLogWarn("⚠️ Could not successfully decode SiteSetting value for \(settingID)")
+        if responseType.isSupported {
+            if let stringValue = try? container.decode(String.self, forKey: .value) {
+                value = stringValue
+            } else {
+                DDLogWarn("⚠️ Could not successfully decode SiteSetting value for \(settingID)")
+            }
         }
-
-        self.init(siteID: siteID, settingID: settingID, label: label, description: settingDescription, value: value, settingGroupKey: settingGroupKey)
+        self.init(siteID: siteID, settingID: settingID, label: label, settingDescription: settingDescription, value: value, settingGroupKey: settingGroupKey)
     }
 }
+/// Defines all of the response types of SiteSettings options
+/// See: https://woocommerce.github.io/woocommerce-rest-api-docs/#setting-option-properties
+///
+private extension SiteSetting {
+    enum ResponseType: String, Codable {
+        case text
+        case email
+        case number
+        case color
+        case password
+        case textarea
+        case select
+        case multiselect
+        case radio
+        case imageWidth = "image_width"
+        case checkbox
+        // For types not contemplated by the API
+        case unknown
 
+        var isSupported: Bool {
+            switch self {
+            case .multiselect:
+                return false
+            default:
+                return true
+            }
+        }
+    }
+}
 
 /// Defines all of the SiteSetting CodingKeys.
 ///
@@ -61,6 +87,7 @@ private extension SiteSetting {
         case label              = "label"
         case settingDescription = "description"
         case value              = "value"
+        case type               = "type"
     }
 }
 
@@ -68,23 +95,9 @@ private extension SiteSetting {
 // MARK: - Comparable Conformance
 //
 extension SiteSetting: Comparable {
-    public static func == (lhs: SiteSetting, rhs: SiteSetting) -> Bool {
-        return lhs.settingID == rhs.settingID &&
-            lhs.label == rhs.label &&
-            lhs.settingDescription == rhs.settingDescription &&
-            lhs.value == rhs.value &&
-            lhs.settingGroupKey == rhs.settingGroupKey
-
-    }
-
     public static func < (lhs: SiteSetting, rhs: SiteSetting) -> Bool {
         return lhs.settingID < rhs.settingID ||
             (lhs.settingID == rhs.settingID && lhs.label < rhs.label)
-    }
-
-    public static func > (lhs: SiteSetting, rhs: SiteSetting) -> Bool {
-        return lhs.settingID > rhs.settingID ||
-            (lhs.settingID == rhs.settingID && lhs.label > rhs.label)
     }
 }
 

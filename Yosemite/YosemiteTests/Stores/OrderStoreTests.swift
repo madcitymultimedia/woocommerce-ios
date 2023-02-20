@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import Yosemite
 @testable import Networking
@@ -46,7 +47,7 @@ final class OrderStoreTests: XCTestCase {
     ///
     private let defaultSearchKeyword = "gooooooooogol"
 
-
+    private var subscriptions: Set<AnyCancellable> = []
 
     // MARK: - Overridden Methods
 
@@ -66,7 +67,7 @@ final class OrderStoreTests: XCTestCase {
         let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
         network.simulateResponse(requestUrlSuffix: "orders", filename: "orders-load-all")
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertNil(error)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 4)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderRefundCondensed.self), 4)
@@ -88,7 +89,7 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.Order.self), 0)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderRefundCondensed.self), 0)
 
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 4)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderRefundCondensed.self), 4)
             XCTAssertNil(error)
@@ -112,7 +113,7 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.Order.self), 0)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderRefundCondensed.self), 0)
 
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertNil(error)
 
             let predicate = NSPredicate(format: "orderID = %ld", remoteOrder.orderID)
@@ -140,7 +141,7 @@ final class OrderStoreTests: XCTestCase {
         network.simulateResponse(requestUrlSuffix: "orders", filename: "broken-orders-mark-2")
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.Order.self), 0)
 
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertNil(error)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 6)
 
@@ -158,7 +159,7 @@ final class OrderStoreTests: XCTestCase {
         let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
         network.simulateResponse(requestUrlSuffix: "orders", filename: "generic_error")
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertNotNil(error)
 
             expectation.fulfill()
@@ -174,7 +175,7 @@ final class OrderStoreTests: XCTestCase {
         let expectation = self.expectation(description: "Retrieve orders empty response")
         let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
-        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statusKey: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { error in
+        let action = OrderAction.synchronizeOrders(siteID: sampleSiteID, statuses: nil, pageNumber: defaultPageNumber, pageSize: defaultPageSize) { _, error in
             XCTAssertNotNil(error)
 
             expectation.fulfill()
@@ -340,12 +341,16 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItem.self), 0)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItemTax.self), 0)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 0)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 0)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderMetaData.self), 0)
 
         orderStore.upsertStoredOrder(readOnlyOrder: sampleOrder(), in: viewStorage)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.Order.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItem.self), 2)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItemTax.self), 2)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderMetaData.self), 1)
 
         orderStore.upsertStoredOrder(readOnlyOrder: sampleOrderMutated(), in: viewStorage)
         let storageOrder1 = viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderMutated().orderID)
@@ -354,6 +359,8 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItem.self), 3)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItemTax.self), 3)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 2)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 2)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderMetaData.self), 2)
 
         orderStore.upsertStoredOrder(readOnlyOrder: sampleOrderMutated2(), in: viewStorage)
         let storageOrder2 = viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderMutated2().orderID)
@@ -362,6 +369,8 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItem.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItemTax.self), 4)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 0)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 0)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderMetaData.self), 0)
     }
 
     /// Verifies that `upsertStoredOrder` effectively inserts a new Order, with the specified payload.
@@ -522,7 +531,7 @@ final class OrderStoreTests: XCTestCase {
         // Update: Expected Status is actually coming from `order.json` (Status == .processing actually!)
         network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
 
-        let action = OrderAction.updateOrder(siteID: sampleSiteID, orderID: sampleOrderID, status: OrderStatusEnum.processing) { error in
+        let action = OrderAction.updateOrderStatus(siteID: sampleSiteID, orderID: sampleOrderID, status: OrderStatusEnum.processing) { error in
             XCTAssertNil(error)
 
             let storageOrder = self.storageManager.viewStorage.loadOrder(siteID: self.sampleSiteID, orderID: self.sampleOrderID)
@@ -546,7 +555,7 @@ final class OrderStoreTests: XCTestCase {
 
         network.removeAllSimulatedResponses()
 
-        let action = OrderAction.updateOrder(siteID: sampleSiteID, orderID: sampleOrderID, status: OrderStatusEnum.processing) { error in
+        let action = OrderAction.updateOrderStatus(siteID: sampleSiteID, orderID: sampleOrderID, status: OrderStatusEnum.processing) { error in
             XCTAssertNotNil(error)
 
             let storageOrder = self.storageManager.viewStorage.loadOrder(siteID: self.sampleSiteID, orderID: self.sampleOrderID)
@@ -557,6 +566,166 @@ final class OrderStoreTests: XCTestCase {
 
         orderStore.onAction(action)
         wait(for: [expectation], timeout: Constants.expectationTimeout)
+    }
+
+    func test_optimistic_update_order_customer_note_correctly() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder()
+        let updatedOrder = originalOrder.copy(customerNote: "Updated!")
+
+        orderStore.upsertStoredOrder(readOnlyOrder: originalOrder, in: viewStorage)
+
+        /// As we're updating the order optimistically, the response from the API will be ignored.
+        /// It's only to simulate the successful path.
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID, order: updatedOrder, fields: [.customerNote]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertEqual(storageOrder?.customerNote, updatedOrder.customerNote)
+    }
+
+    func test_optimistic_update_order_customer_note_reverts_upon_failure() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder() // (Customer note == "")
+        let updatedOrder = originalOrder.copy(customerNote: "Updated!")
+
+        orderStore.upsertStoredOrder(readOnlyOrder: originalOrder, in: viewStorage)
+
+        network.removeAllSimulatedResponses()
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID, order: updatedOrder, fields: [.customerNote]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertEqual(storageOrder?.customerNote, originalOrder.customerNote)
+    }
+
+    func test_optimistic_update_deletes_order_from_storage_upon_failure_if_it_does_not_exist_locally() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder() // (Customer note == "")
+        let updatedOrder = originalOrder.copy(customerNote: "Updated!")
+
+        network.removeAllSimulatedResponses()
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID, order: updatedOrder, fields: [.customerNote]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertNil(storageOrder)
+    }
+
+    func test_optimistic_update_order_shipping_phone_correctly() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder() // [Shipping Phone == "333-333-3333"]
+        let newAddress = Address.fake().copy(phone: "333-333-3334")
+        let updatedOrder = originalOrder.copy(shippingAddress: newAddress) // [Shipping Phone == "333-333-3334"]
+
+        orderStore.upsertStoredOrder(readOnlyOrder: originalOrder, in: viewStorage)
+
+        /// As we're updating the order optimistically, the response from the API will be ignored.
+        /// It's only to simulate the successful path.
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID, order: updatedOrder, fields: [.shippingAddress]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertEqual(storageOrder?.shippingPhone, updatedOrder.shippingAddress?.phone)
+    }
+
+    func test_optimistic_update_order_shipping_phone_reverts_upon_failure() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder() // [Shipping Phone == "333-333-3333"]
+        let newAddress = Address.fake().copy(phone: "333-333-3334")
+        let updatedOrder = originalOrder.copy(shippingAddress: newAddress) // [Shipping Phone == "333-333-3334"]
+
+        orderStore.upsertStoredOrder(readOnlyOrder: originalOrder, in: viewStorage)
+
+        network.removeAllSimulatedResponses()
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID, order: updatedOrder, fields: [.shippingAddress]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertEqual(storageOrder?.shippingPhone, originalOrder.shippingAddress?.phone)
+    }
+
+    func test_optimistic_update_order_shipping_and_billing_phone_correctly() {
+        // Given
+        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        let originalOrder = sampleOrder() // [Shipping & Biling Phone == "333-333-3333"]
+        let newAddress = Address.fake().copy(phone: "333-333-3334")
+        let updatedOrder = originalOrder.copy(billingAddress: newAddress, shippingAddress: newAddress) // [Shipping & Biling == "333-333-3334"]
+
+        orderStore.upsertStoredOrder(readOnlyOrder: originalOrder, in: viewStorage)
+
+        /// As we're updating the order optimistically, the response from the API will be ignored.
+        /// It's only to simulate the successful path.
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let result: Result<Networking.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrderOptimistically(siteID: self.sampleSiteID,
+                                                               order: updatedOrder,
+                                                               fields: [.shippingAddress, .billingAddress]) { result in
+                promise(result)
+            }
+            orderStore.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let storageOrder = storageManager.viewStorage.loadOrder(siteID: sampleSiteID, orderID: sampleOrderID)
+        XCTAssertEqual(storageOrder?.shippingPhone, updatedOrder.shippingAddress?.phone)
+        XCTAssertEqual(storageOrder?.billingPhone, updatedOrder.billingAddress?.phone)
     }
 
 
@@ -571,12 +740,14 @@ final class OrderStoreTests: XCTestCase {
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.Order.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderItem.self), 2)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 1)
 
         let expectation = self.expectation(description: "Stored Orders Reset")
         let action = OrderAction.resetStoredOrders {
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 0)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderItem.self), 0)
             XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderCoupon.self), 0)
+            XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderTaxLine.self), 0)
 
             expectation.fulfill()
         }
@@ -610,7 +781,7 @@ final class OrderStoreTests: XCTestCase {
 
         // Initial save: This should trigger *ONE* Upsert event
         let backgroundSaveExpectation = expectation(description: "Retrieve order notes empty response")
-        let derivedContext = storageManager.newDerivedStorage()
+        let derivedContext = storageManager.writerDerivedStorage
 
         derivedContext.perform {
             orderStore.upsertStoredOrder(readOnlyOrder: self.sampleOrder(), in: derivedContext)
@@ -633,47 +804,436 @@ final class OrderStoreTests: XCTestCase {
     }
 
 
-    // MARK: - OrderAction.countProcessingOrders
+    func test_create_simple_payments_order_properly_sends_values_as_fees_with_no_taxes() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order")
 
-    /// Verifies that OrderAction.countProcessingOrders returns the expected OrderCount.
-    ///
-    func testCountProcessingOrdersReturnsExpectedFields() {
-        let expectation = self.expectation(description: "Count processing orders")
-        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        // When
+        let action = OrderAction.createSimplePaymentsOrder(siteID: self.sampleSiteID, status: .autoDraft, amount: "125.50", taxable: false) { _ in }
+        store.onAction(action)
 
-        network.simulateResponse(requestUrlSuffix: "reports/orders/totals", filename: "orders-count")
-
-        let action = OrderAction.countProcessingOrders(siteID: sampleSiteID) { orderCount, error in
-            XCTAssertNil(error)
-            // Assert the entity is saved to coredata
-            XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderCount.self), 1)
-            // And assert it is returned
-            XCTAssertNotNil(orderCount)
-            XCTAssertEqual(orderCount!["processing"]?.total, 6)
-
-            expectation.fulfill()
-        }
-
-        orderStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["fee_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": 0,
+            "name": "Simple Payments",
+            "tax_status": "none",
+            "tax_class": "",
+            "total": "125.50"
+        ]
+        assertEqual(received, expected)
     }
 
-    /// Verifies that OrderAction.countProcessingOrders returns an error whenever there is an error response from the backend.
-    ///
-    func testRetrieveOrderCountReturnsErrorUponReponseError() {
-        let expectation = self.expectation(description: "Retrieve order count error response")
-        let orderStore = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_create_simple_payments_order_properly_sends_values_as_fees_with_taxes() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order")
 
-        network.simulateResponse(requestUrlSuffix: "reports/orders/totals", filename: "generic_error")
+        // When
+        let action = OrderAction.createSimplePaymentsOrder(siteID: self.sampleSiteID, status: .autoDraft, amount: "125.50", taxable: true) { _ in }
+        store.onAction(action)
 
-        let action = OrderAction.countProcessingOrders(siteID: sampleSiteID) { orderCount, error in
-            XCTAssertNotNil(error)
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["fee_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": 0,
+            "name": "Simple Payments",
+            "tax_status": "taxable",
+            "tax_class": "",
+            "total": "125.50"
+        ]
+        assertEqual(received, expected)
+    }
 
-            expectation.fulfill()
+    func test_create_pending_simple_payments_order_stores_orders_correctly() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order")
+
+        // When
+        let storedOrder: Yosemite.Order? = waitFor { promise in
+            let action = OrderAction.createSimplePaymentsOrder(siteID: self.sampleSiteID, status: .pending, amount: "125.50", taxable: false) { _ in
+                let order = self.storageManager.viewStorage.loadOrder(siteID: self.sampleSiteID, orderID: self.sampleOrderID)?.toReadOnly()
+                promise(order)
+            }
+            store.onAction(action)
         }
 
-        orderStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertNotNil(storedOrder)
+    }
+
+    func test_create_draft_simple_payments_order_does_not_get_stored() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order-auto-draft-status")
+
+        // When
+        let storedOrder: Yosemite.Order? = waitFor { promise in
+            let action = OrderAction.createSimplePaymentsOrder(siteID: self.sampleSiteID, status: .autoDraft, amount: "125.50", taxable: false) { _ in
+                let order = self.storageManager.viewStorage.loadOrder(siteID: self.sampleSiteID, orderID: self.sampleOrderID)?.toReadOnly()
+                promise(order)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertNil(storedOrder)
+    }
+
+    func test_create_order_stores_orders_correctly() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order")
+
+        // When
+        let storedOrder: Yosemite.Order? = waitFor { promise in
+            let action = OrderAction.createOrder(siteID: self.sampleSiteID, order: self.sampleOrder()) { _ in
+                let order = self.storageManager.viewStorage.loadOrder(siteID: self.sampleSiteID, orderID: self.sampleOrderID)?.toReadOnly()
+                promise(order)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertNotNil(storedOrder)
+    }
+
+    func test_update_simple_payments_order_sends_correct_values() throws {
+        // Given
+        let feeID: Int64 = 1234
+        let amount = "100.00"
+        let taxable = true
+        let note = "This is a note"
+        let email = "email@email.com"
+
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let action = OrderAction.updateSimplePaymentsOrder(siteID: sampleSiteID,
+                                                           orderID: sampleOrderID,
+                                                           feeID: feeID,
+                                                           status: .pending,
+                                                           amount: amount,
+                                                           taxable: taxable,
+                                                           orderNote: note,
+                                                           email: email) { _ in }
+        store.onAction(action)
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let receivedFees = try XCTUnwrap(request.parameters["fee_lines"] as? [[String: AnyHashable]]).first
+        let expectedFees: [String: AnyHashable] = [
+            "id": 1234,
+            "name": "Simple Payments",
+            "tax_status": "taxable",
+            "tax_class": "",
+            "total": "100.00"
+        ]
+        assertEqual(expectedFees, receivedFees)
+
+        let receivedBilling = try XCTUnwrap(request.parameters["billing"] as? [String: AnyHashable])
+        let expectedBilling: [String: AnyHashable] = [
+            "first_name": "",
+            "last_name": "",
+            "address_1": "",
+            "city": "",
+            "state": "",
+            "postcode": "",
+            "country": "",
+            "email": email
+        ]
+        assertEqual(receivedBilling, expectedBilling)
+
+        let receivedNote = try XCTUnwrap(request.parameters["customer_note"] as? String)
+        assertEqual(receivedNote, note)
+    }
+
+    func test_create_order_sends_expected_fields() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let action = OrderAction.createOrder(siteID: sampleSiteID, order: sampleOrder()) { _ in }
+        store.onAction(action)
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let receivedKeys = Array(request.parameters.keys).sorted()
+        let expectedKeys = [
+            "billing",
+            "customer_note",
+            "fee_lines",
+            "line_items",
+            "shipping",
+            "shipping_lines",
+            "status"
+        ]
+        assertEqual(expectedKeys, receivedKeys)
+    }
+
+    func test_create_order_does_not_upsert_autodrafts() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders", filename: "order-auto-draft-status")
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.createOrder(siteID: self.sampleSiteID, order: self.sampleOrder()) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 0)
+    }
+
+    func test_update_order_does_not_upsert_autodrafts() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order-auto-draft-status")
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.updateOrder(siteID: self.sampleSiteID, order: self.sampleOrder(), fields: []) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 0)
+    }
+
+    // MARK: Tests for `markOrderAsPaidLocally`
+
+    func test_markOrderAsPaidLocally_sets_order_datePaid_and_status_to_processing() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let order = Order.fake().copy(status: .pending)
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+        // GMT: Wednesday, May 11, 2022 3:45:03 AM
+        let datePaid = Date(timeIntervalSince1970: 1652240703)
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.markOrderAsPaidLocally(siteID: order.siteID, orderID: order.orderID, datePaid: datePaid) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let orderOnCompletion = try XCTUnwrap(result.get())
+        // `customerNote` is default to an empty string when converting from an order in storage.
+        assertEqual(order.copy(status: .processing, customerNote: "", datePaid: datePaid), orderOnCompletion)
+
+        let orderInStorage = try XCTUnwrap(viewStorage.loadOrder(siteID: order.siteID, orderID: order.orderID)?.toReadOnly())
+        assertEqual(orderInStorage, orderOnCompletion)
+    }
+
+    func test_markOrderAsPaidLocally_returns_failure_when_there_is_no_order() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let order = Order.fake()
+        // GMT: Wednesday, May 11, 2022 3:45:03 AM
+        let datePaid = Date(timeIntervalSince1970: 1652240703)
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.markOrderAsPaidLocally(siteID: order.siteID, orderID: order.orderID, datePaid: datePaid) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertEqual(result.failure as? OrderStore.MarkOrderAsPaidLocallyError, .orderNotFoundInStorage)
+    }
+
+    func test_delete_order_removes_order_from_storage() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let order = sampleOrder()
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "order")
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.deleteOrder(siteID: self.sampleSiteID, order: order, deletePermanently: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 0)
+    }
+
+    func test_delete_order_keeps_order_in_storage_if_deletion_fails() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let order = sampleOrder()
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "generic_error")
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.deleteOrder(siteID: self.sampleSiteID, order: order, deletePermanently: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 1)
+    }
+
+    func test_delete_order_does_not_keep_autodraft_order_in_storage_if_deletion_fails() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let order = sampleOrder().copy(status: .autoDraft)
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+        network.simulateResponse(requestUrlSuffix: "orders/963", filename: "generic_error")
+
+        // When
+        let result: Result<Yosemite.Order, Error> = waitFor { promise in
+            let action = OrderAction.deleteOrder(siteID: self.sampleSiteID, order: order, deletePermanently: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.Order.self), 0)
+    }
+
+    // MARK: - `observeInsertedOrders`
+
+    func test_observeInsertedOrders_emits_inserted_order() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let siteID: Int64 = 6688
+
+        // Ensures the assertions take place after the Core Data notifications are sent.
+        var viewContextChanged = false
+        NotificationCenter.default
+            .publisher(for: .NSManagedObjectContextObjectsDidChange, object: viewStorage)
+            .sink { _ in
+                viewContextChanged = true
+            }.store(in: &subscriptions)
+
+        // When
+        let publisher: AnyPublisher<[Yosemite.Order], Never> = waitFor { promise in
+            let action = OrderAction.observeInsertedOrders(siteID: siteID) { publisher in
+                promise(publisher)
+            }
+            store.onAction(action)
+        }
+        var ordersSequence = [[Yosemite.Order]]()
+        publisher.sink { orders in
+            ordersSequence.append(orders)
+        }.store(in: &subscriptions)
+
+        // Inserts an order on the same site.
+        let order = sampleOrder().copy(siteID: siteID, status: .autoDraft)
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+
+        waitUntil {
+            viewContextChanged == true
+        }
+
+        // Then
+        XCTAssertEqual(ordersSequence.count, 1)
+        XCTAssertEqual(ordersSequence.first, [order])
+    }
+
+    func test_observeInsertedOrders_does_not_emit_values_after_inserting_orders_in_a_different_site() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let siteID: Int64 = 6688
+        let anotherSiteID: Int64 = 7799
+
+        // Ensures the assertions take place after the Core Data notifications are sent.
+        var viewContextChanged = false
+        NotificationCenter.default
+            .publisher(for: .NSManagedObjectContextObjectsDidChange, object: viewStorage)
+            .sink { _ in
+                viewContextChanged = true
+            }.store(in: &subscriptions)
+
+        // When
+        let publisher: AnyPublisher<[Yosemite.Order], Never> = waitFor { promise in
+            let action = OrderAction.observeInsertedOrders(siteID: siteID) { publisher in
+                promise(publisher)
+            }
+            store.onAction(action)
+        }
+        var ordersSequence = [[Yosemite.Order]]()
+        publisher.sink { orders in
+            ordersSequence.append(orders)
+        }.store(in: &subscriptions)
+
+        // Inserts an order on another site.
+        let order = sampleOrder().copy(siteID: anotherSiteID, status: .autoDraft)
+        store.upsertStoredOrder(readOnlyOrder: order, in: viewStorage)
+
+        waitUntil {
+            viewContextChanged == true
+        }
+
+        // Then
+        XCTAssertEqual(ordersSequence.count, 0)
+    }
+
+    func test_observeInsertedOrders_does_not_emit_values_after_inserting_a_non_order_object() throws {
+        // Given
+        let store = OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let siteID: Int64 = 6688
+
+        // Ensures the assertions take place after the Core Data notifications are sent.
+        var viewContextChanged = false
+        NotificationCenter.default
+            .publisher(for: .NSManagedObjectContextObjectsDidChange, object: viewStorage)
+            .sink { _ in
+                viewContextChanged = true
+            }.store(in: &subscriptions)
+
+        // When
+        let publisher: AnyPublisher<[Yosemite.Order], Never> = waitFor { promise in
+            let action = OrderAction.observeInsertedOrders(siteID: siteID) { publisher in
+                promise(publisher)
+            }
+            store.onAction(action)
+        }
+        var ordersSequence = [[Yosemite.Order]]()
+        publisher.sink { orders in
+            ordersSequence.append(orders)
+        }.store(in: &subscriptions)
+
+        // Inserts a product on the same site.
+        let product = Product.fake().copy(siteID: siteID)
+        let storageProduct = viewStorage.insertNewObject(ofType: Storage.Product.self)
+        storageProduct.update(with: product)
+
+        waitUntil {
+            viewContextChanged == true
+        }
+
+        // Then
+        XCTAssertEqual(ordersSequence.count, 0)
     }
 }
 
@@ -682,87 +1242,56 @@ final class OrderStoreTests: XCTestCase {
 //
 private extension OrderStoreTests {
     func sampleOrder() -> Networking.Order {
-        return Order(siteID: sampleSiteID,
-                     orderID: 963,
-                     parentID: 0,
-                     customerID: 11,
-                     number: "963",
-                     status: .processing,
-                     currency: "USD",
-                     customerNote: "",
-                     dateCreated: date(with: "2018-04-03T23:05:12"),
-                     dateModified: date(with: "2018-04-03T23:05:14"),
-                     datePaid: date(with: "2018-04-03T23:05:14"),
-                     discountTotal: "30.00",
-                     discountTax: "1.20",
-                     shippingTotal: "0.00",
-                     shippingTax: "0.00",
-                     total: "31.20",
-                     totalTax: "1.20",
-                     paymentMethodID: "stripe",
-                     paymentMethodTitle: "Credit Card (Stripe)",
-                     items: sampleItems(),
-                     billingAddress: sampleAddress(),
-                     shippingAddress: sampleAddress(),
-                     shippingLines: sampleShippingLines(),
-                     coupons: sampleCoupons(),
-                     refunds: [])
+        return Order.fake().copy(siteID: sampleSiteID,
+                                 orderID: 963,
+                                 customerID: 11,
+                                 orderKey: "abc123",
+                                 isEditable: true,
+                                 needsPayment: true,
+                                 needsProcessing: true,
+                                 number: "963",
+                                 status: .processing,
+                                 currency: "USD",
+                                 customerNote: "",
+                                 dateCreated: DateFormatter.dateFromString(with: "2018-04-03T23:05:12"),
+                                 dateModified: DateFormatter.dateFromString(with: "2018-04-03T23:05:14"),
+                                 datePaid: DateFormatter.dateFromString(with: "2018-04-03T23:05:14"),
+                                 discountTotal: "30.00",
+                                 discountTax: "1.20",
+                                 shippingTotal: "0.00",
+                                 shippingTax: "0.00",
+                                 total: "31.20",
+                                 totalTax: "1.20",
+                                 paymentMethodID: "stripe",
+                                 paymentMethodTitle: "Credit Card (Stripe)",
+                                 paymentURL: URL(string: "http://www.automattic.com"),
+                                 items: sampleItems(),
+                                 billingAddress: sampleAddress(),
+                                 shippingAddress: sampleAddress(),
+                                 shippingLines: sampleShippingLines(),
+                                 coupons: sampleCoupons(),
+                                 taxes: sampleOrderTaxLines(),
+                                 customFields: sampleCustomFields())
     }
 
     func sampleOrderMutated() -> Networking.Order {
-        return Order(siteID: sampleSiteID,
-                     orderID: 963,
-                     parentID: 0,
-                     customerID: 11,
-                     number: "963",
-                     status: .completed,
-                     currency: "USD",
-                     customerNote: "",
-                     dateCreated: date(with: "2018-04-03T23:05:12"),
-                     dateModified: date(with: "2018-04-03T23:05:14"),
-                     datePaid: date(with: "2018-04-03T23:05:14"),
-                     discountTotal: "40.00",
-                     discountTax: "1.20",
-                     shippingTotal: "0.00",
-                     shippingTax: "0.00",
-                     total: "41.20",
-                     totalTax: "1.20",
-                     paymentMethodID: "stripe",
-                     paymentMethodTitle: "Credit Card (Stripe)",
-                     items: sampleItemsMutated(),
-                     billingAddress: sampleAddress(),
-                     shippingAddress: sampleAddress(),
-                     shippingLines: sampleShippingLines(),
-                     coupons: sampleCouponsMutated(),
-                     refunds: [])
+        return sampleOrder().copy(status: .completed,
+                                  discountTotal: "40.00",
+                                  total: "41.20",
+                                  items: sampleItemsMutated(),
+                                  coupons: sampleCouponsMutated(),
+                                  taxes: sampleOrderTaxLinesMutated(),
+                                  customFields: sampleCustomFieldsMutated())
     }
 
     func sampleOrderMutated2() -> Networking.Order {
-        return Order(siteID: sampleSiteID,
-                     orderID: 963,
-                     parentID: 0,
-                     customerID: 11,
-                     number: "963",
-                     status: .completed,
-                     currency: "USD",
-                     customerNote: "",
-                     dateCreated: date(with: "2018-04-03T23:05:12"),
-                     dateModified: date(with: "2018-04-03T23:05:14"),
-                     datePaid: date(with: "2018-04-03T23:05:14"),
-                     discountTotal: "40.00",
-                     discountTax: "1.20",
-                     shippingTotal: "0.00",
-                     shippingTax: "0.00",
-                     total: "41.20",
-                     totalTax: "1.20",
-                     paymentMethodID: "stripe",
-                     paymentMethodTitle: "Credit Card (Stripe)",
-                     items: sampleItemsMutated2(),
-                     billingAddress: sampleAddress(),
-                     shippingAddress: sampleAddress(),
-                     shippingLines: sampleShippingLines(),
-                     coupons: [],
-                     refunds: [])
+        return sampleOrder().copy(status: .completed,
+                                  discountTotal: "40.00",
+                                  total: "41.20",
+                                  items: sampleItemsMutated2(),
+                                  coupons: [],
+                                  taxes: [],
+                                  customFields: [])
     }
 
     func sampleAddress() -> Networking.Address {
@@ -808,6 +1337,26 @@ private extension OrderStoreTests {
                                       discountTax: "0.66")
 
         return [coupon1, coupon2]
+    }
+
+    func sampleOrderTaxLine() -> Networking.OrderTaxLine {
+        OrderTaxLine.fake().copy(taxID: 1330,
+                                 rateCode: "US-NY-STATE-2",
+                                 rateID: 6,
+                                 label: "State",
+                                 totalTax: "7.71",
+                                 ratePercent: 4.5)
+    }
+
+    func sampleOrderTaxLines() -> [Networking.OrderTaxLine] {
+        [sampleOrderTaxLine()]
+    }
+
+    func sampleOrderTaxLinesMutated() -> [Networking.OrderTaxLine] {
+        [
+            sampleOrderTaxLine().copy(totalTax: "55", ratePercent: 5.5),
+            OrderTaxLine.fake()
+        ]
     }
 
     func sampleItems() -> [Networking.OrderItem] {
@@ -912,13 +1461,6 @@ private extension OrderStoreTests {
         return [item1]
     }
 
-    func date(with dateString: String) -> Date {
-        guard let date = DateFormatter.Defaults.dateTimeFormatter.date(from: dateString) else {
-            return Date()
-        }
-        return date
-    }
-
     func taxes() -> [Networking.OrderItemTax] {
         return [Networking.OrderItemTax(taxID: 75, subtotal: "0.45", total: "0.45")]
     }
@@ -926,5 +1468,14 @@ private extension OrderStoreTests {
     func taxesMutated() -> [Networking.OrderItemTax] {
         [Networking.OrderItemTax(taxID: 73, subtotal: "0.9", total: "0.9"),
          Networking.OrderItemTax(taxID: 75, subtotal: "0.45", total: "0.45")]
+    }
+
+    func sampleCustomFields() -> [Networking.OrderMetaData] {
+        return [Networking.OrderMetaData(metadataID: 18148, key: "Viewed Currency", value: "USD")]
+    }
+
+    func sampleCustomFieldsMutated() -> [Networking.OrderMetaData] {
+        return [Networking.OrderMetaData(metadataID: 18148, key: "Viewed Currency", value: "GBP"),
+                Networking.OrderMetaData(metadataID: 18149, key: "Converted Order Total", value: "223.71 GBP")]
     }
 }

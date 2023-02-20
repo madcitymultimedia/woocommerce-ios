@@ -26,8 +26,10 @@ extension ProductFormSection.PrimaryFieldRow: ReusableTableRow {
         switch self {
         case .images:
             return [ProductImagesHeaderTableViewCell.self]
+        case .linkedProductsPromo:
+            return [cellType]
         case .name:
-            return [TextViewTableViewCell.self, BasicTableViewCell.self]
+            return [LabeledTextViewTableViewCell.self, BasicTableViewCell.self]
         case .variationName:
             return [cellType]
         case .description:
@@ -43,8 +45,10 @@ extension ProductFormSection.PrimaryFieldRow: ReusableTableRow {
         switch self {
         case .images:
             return ProductImagesHeaderTableViewCell.self
-        case .name(_, let editable):
-            return editable ? TextViewTableViewCell.self: BasicTableViewCell.self
+        case .linkedProductsPromo:
+            return FeatureAnnouncementCardCell.self
+        case .name(_, let editable, _):
+            return editable ? LabeledTextViewTableViewCell.self: BasicTableViewCell.self
         case .variationName:
             return BasicTableViewCell.self
         case .description(let description, _):
@@ -60,6 +64,7 @@ extension ProductFormSection.SettingsRow: ReusableTableRow {
              .productType,
              .inventory,
              .shipping,
+             .addOns,
              .categories,
              .tags,
              .shortDescription,
@@ -70,7 +75,8 @@ extension ProductFormSection.SettingsRow: ReusableTableRow {
              .downloadableFiles,
              .linkedProducts,
              .status,
-             .noPriceWarning:
+             .noPriceWarning,
+             .attributes:
             return [ImageAndTitleAndTextTableViewCell.self]
         case .reviews:
             return [ProductReviewsTableViewCell.self]
@@ -87,6 +93,7 @@ extension ProductFormSection.SettingsRow: ReusableTableRow {
              .productType,
              .inventory,
              .shipping,
+             .addOns,
              .categories,
              .tags,
              .shortDescription,
@@ -97,7 +104,8 @@ extension ProductFormSection.SettingsRow: ReusableTableRow {
              .downloadableFiles,
              .linkedProducts,
              .status,
-             .noPriceWarning:
+             .noPriceWarning,
+             .attributes:
             return ImageAndTitleAndTextTableViewCell.self
         case .reviews:
             return ProductReviewsTableViewCell.self

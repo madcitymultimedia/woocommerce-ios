@@ -1,8 +1,9 @@
 import Foundation
+import Codegen
 
 /// Represents a `ProductAttributeTerm` entity.
 ///
-public struct ProductAttributeTerm: Equatable {
+public struct ProductAttributeTerm: Equatable, GeneratedFakeable {
     public let siteID: Int64
     public let termID: Int64
     public let name: String

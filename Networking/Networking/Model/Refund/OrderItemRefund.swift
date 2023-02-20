@@ -1,13 +1,14 @@
 import Foundation
-
+import Codegen
 
 /// Represents an Order Item that was refunded or will be refunded.
 ///
-public struct OrderItemRefund: Codable {
+public struct OrderItemRefund: Codable, Equatable, GeneratedFakeable, GeneratedCopiable {
     public let itemID: Int64
     public let name: String
     public let productID: Int64
     public let variationID: Int64
+    public let refundedItemID: String?
     public let quantity: Decimal
 
     /// Price is a currency.
@@ -30,6 +31,7 @@ public struct OrderItemRefund: Codable {
                 name: String,
                 productID: Int64,
                 variationID: Int64,
+                refundedItemID: String?,
                 quantity: Decimal,
                 price: NSDecimalNumber,
                 sku: String?,
@@ -43,6 +45,7 @@ public struct OrderItemRefund: Codable {
         self.name = name
         self.productID = productID
         self.variationID = variationID
+        self.refundedItemID = refundedItemID
         self.quantity = quantity
         self.price = price
         self.sku = sku
@@ -76,11 +79,15 @@ public struct OrderItemRefund: Codable {
         let total = try container.decode(String.self, forKey: .total)
         let totalTax = try container.decode(String.self, forKey: .totalTax)
 
+        let allOrderItemRefundMetaData = try container.decode([OrderItemRefundMetaData].self, forKey: .metadata)
+        let refundedItemID = allOrderItemRefundMetaData.first(where: { $0.key == "_refunded_item_id" })?.value
+
         // initialize the struct
         self.init(itemID: itemID,
                   name: name,
                   productID: productID,
                   variationID: variationID,
+                  refundedItemID: refundedItemID,
                   quantity: quantity,
                   price: price,
                   sku: sku,
@@ -131,29 +138,13 @@ private extension OrderItemRefund {
         case total
         case totalTax       = "total_tax"
         case taxes
+        case metadata       = "meta_data"
     }
 
     enum EncodingKeys: String, CodingKey {
         case quantity = "qty"
         case total = "refund_total"
         case taxes = "refund_tax"
-    }
-}
-
-
-// MARK: - Comparable Conformance
-//
-extension OrderItemRefund: Comparable {
-    public static func == (lhs: OrderItemRefund, rhs: OrderItemRefund) -> Bool {
-        return lhs.itemID == rhs.itemID &&
-            lhs.productID == rhs.productID &&
-            lhs.variationID == rhs.variationID
-    }
-
-    public static func < (lhs: OrderItemRefund, rhs: OrderItemRefund) -> Bool {
-        return lhs.itemID < rhs.itemID ||
-            (lhs.itemID == rhs.itemID && lhs.productID < rhs.productID) ||
-            (lhs.itemID == rhs.itemID && lhs.productID == rhs.productID && lhs.name < rhs.name)
     }
 }
 

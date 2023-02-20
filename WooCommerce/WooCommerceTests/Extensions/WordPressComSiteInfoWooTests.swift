@@ -4,27 +4,33 @@ import XCTest
 
 final class WordPressComSiteInfoWooTests: XCTestCase {
     func test_is_valid_when_jetpack_is_active_and_connected() {
+        // When
         let infoSite = WordPressComSiteInfo(remote: hasJetpack())
 
-        XCTAssertTrue(infoSite.hasValidJetpack)
+        // Then
+        XCTAssertTrue(infoSite.isJetpackConnected)
     }
 
-    func test_is_not_valid_when_site_does_not_have_jetpack() {
+    func test_is_valid_when_site_does_not_have_jetpack_installed_but_jcp_is_connected() {
+        // When
         let infoSite = WordPressComSiteInfo(remote: doesNotHaveJetpack())
 
-        XCTAssertFalse(infoSite.hasValidJetpack)
+        // Then
+        XCTAssertTrue(infoSite.isJetpackConnected)
     }
 
-    func test_is_not_valid_when_site_has_jetpack_installed_but_not_active() {
+    func test_is_valid_when_site_has_jetpack_installed_and_inactive_but_jcp_is_connected() {
+        // When
         let infoSite = WordPressComSiteInfo(remote: hasJetpackInactive())
 
-        XCTAssertFalse(infoSite.hasValidJetpack)
+        // Then
+        XCTAssertTrue(infoSite.isJetpackConnected)
     }
 
     func test_is_not_valid_when_site_has_jetpack_installed_but_not_connected() {
         let infoSite = WordPressComSiteInfo(remote: hasJetpackNotConnected())
 
-        XCTAssertFalse(infoSite.hasValidJetpack)
+        XCTAssertFalse(infoSite.isJetpackConnected)
     }
 }
 

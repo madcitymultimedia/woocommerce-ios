@@ -1,34 +1,32 @@
 import Foundation
 import UIKit
-import SafariServices
 import WordPressAuthenticator
+import Experiments
 
 
 /// Displays the WooCommerce Prologue UI.
 ///
 final class LoginPrologueViewController: UIViewController {
+    private let isNewToWooCommerceButtonShown: Bool
+    /// The feature carousel is not shown right after finishing the onboarding.
+    private let isFeatureCarouselShown: Bool
+    private let analytics: Analytics
+    private let featureFlagService: FeatureFlagService
 
     /// Background View, to be placed surrounding the bottom area.
     ///
-    @IBOutlet var backgroundView: UIView!
+    @IBOutlet private var backgroundView: UIView!
 
     /// Container View: Holds up the Button + bottom legend.
     ///
-    @IBOutlet var containerView: UIView!
+    @IBOutlet private var containerView: UIView!
 
-    /// Label to be displayed at the top of the Prologue.
+    /// Curved Rectangle: Background shape with curved top edge
     ///
-    @IBOutlet var upperLabel: UILabel!
+    @IBOutlet private weak var curvedRectangle: UIImageView!
 
-    /// Disclaimer Label
-    ///
-    @IBOutlet var disclaimerTextView: UITextView!
-
-    @IBOutlet private var slantedRectangle: UIImageView!
-    /// Jetpack Logo ImageVIew
-    ///
-    @IBOutlet var jetpackImageView: UIImageView!
-
+    /// Button for users who are new to WooCommerce to learn more about WooCommerce.
+    @IBOutlet private weak var newToWooCommerceButton: UIButton!
 
     // MARK: - Overridden Properties
 
@@ -39,15 +37,29 @@ final class LoginPrologueViewController: UIViewController {
 
     // MARK: - Overridden Methods
 
+    init(analytics: Analytics = ServiceLocator.analytics,
+         isFeatureCarouselShown: Bool,
+         featureFlagService: FeatureFlagService = ServiceLocator.featureFlagService) {
+        isNewToWooCommerceButtonShown = featureFlagService.isFeatureFlagEnabled(.newToWooCommerceLinkInLoginPrologue)
+        self.isFeatureCarouselShown = isFeatureCarouselShown
+        self.analytics = analytics
+        self.featureFlagService = featureFlagService
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
 
         setupMainView()
         setupBackgroundView()
         setupContainerView()
-        setupSlantedRectangle()
-
-        setupUpperLabel()
+        setupCurvedRectangle()
+        setupCarousel(isNewToWooCommerceButtonShown: isNewToWooCommerceButtonShown)
+        setupNewToWooCommerceButton(isNewToWooCommerceButtonShown: isNewToWooCommerceButtonShown)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -66,49 +78,78 @@ private extension LoginPrologueViewController {
     }
 
     func setupBackgroundView() {
-        backgroundView.backgroundColor = .init(light: .brand, dark: .withColorStudio(.brand, shade: .shade80))
+        backgroundView.backgroundColor = .authPrologueBottomBackgroundColor
     }
 
     func setupContainerView() {
         containerView.backgroundColor = .authPrologueBottomBackgroundColor
     }
 
-    func setupUpperLabel() {
-        upperLabel.text = NSLocalizedString("Manage orders, track sales and monitor store activity with real-time alerts.", comment: "Login Prologue Legend")
-        upperLabel.adjustsFontForContentSizeCategory = true
-        upperLabel.font = StyleManager.headlineSemiBold
-        upperLabel.textColor = .primary
+    func setupCurvedRectangle() {
+        curvedRectangle.image = UIImage.curvedRectangle.withRenderingMode(.alwaysTemplate)
+        curvedRectangle.tintColor = .authPrologueBottomBackgroundColor
     }
 
-    func setupSlantedRectangle() {
-        slantedRectangle.image = UIImage.slantedRectangle.withRenderingMode(.alwaysTemplate)
-        slantedRectangle.tintColor = .authPrologueBottomBackgroundColor
-    }
-}
-
-
-// MARK: - UITextViewDeletgate Conformance
-//
-extension LoginPrologueViewController: UITextViewDelegate {
-
-    func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
-        displaySafariViewController(at: URL)
-        return false
-    }
-}
-
-
-// MARK: - Action Handlers
-//
-extension LoginPrologueViewController {
-
-    /// Opens SafariViewController at the specified URL.
+    /// Adds a carousel (slider) of screens to promote the main features of the app.
+    /// This is contained in a child view so that this view's background doesn't scroll.
     ///
-    func displaySafariViewController(at url: URL) {
-        ServiceLocator.analytics.track(.loginPrologueJetpackInstructions)
-        let safariViewController = SFSafariViewController(url: url)
+    func setupCarousel(isNewToWooCommerceButtonShown: Bool) {
+        let pageTypes: [LoginProloguePageType] = {
+            if isFeatureCarouselShown {
+                return [.stats, .orderManagement, .products, .reviews]
+            } else {
+                return [.getStarted]
+            }
+        }()
+        let carousel = LoginProloguePageViewController(pageTypes: pageTypes, showsSubtitle: !isFeatureCarouselShown)
+        carousel.view.translatesAutoresizingMaskIntoConstraints = false
 
-        safariViewController.modalPresentationStyle = .pageSheet
-        present(safariViewController, animated: true, completion: nil)
+        addChild(carousel)
+        view.addSubview(carousel.view)
+        if isNewToWooCommerceButtonShown {
+            NSLayoutConstraint.activate([
+                carousel.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                carousel.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                carousel.view.topAnchor.constraint(equalTo: view.topAnchor),
+                carousel.view.bottomAnchor.constraint(equalTo: newToWooCommerceButton.topAnchor,
+                                                      constant: -Constants.spacingBetweenCarouselAndNewToWooCommerceButton),
+            ])
+        } else {
+            view.pinSubviewToAllEdges(carousel.view)
+        }
+    }
+
+    func setupNewToWooCommerceButton(isNewToWooCommerceButtonShown: Bool) {
+        guard isNewToWooCommerceButtonShown else {
+            return newToWooCommerceButton.isHidden = true
+        }
+        let title = Localization.newToWooCommerce
+        newToWooCommerceButton.setTitle(title, for: .normal)
+        newToWooCommerceButton.applyLinkButtonStyle()
+        newToWooCommerceButton.titleLabel?.numberOfLines = 0
+        newToWooCommerceButton.titleLabel?.textAlignment = .center
+        newToWooCommerceButton.on(.touchUpInside) { [weak self] _ in
+            guard let self = self else { return }
+
+            self.analytics.track(.loginNewToWooButtonTapped)
+
+            guard let url = URL(string: Constants.newToWooCommerceURL) else {
+                return assertionFailure("Cannot generate URL.")
+            }
+
+            WebviewHelper.launch(url, with: self)
+        }
+    }
+}
+
+private extension LoginPrologueViewController {
+    enum Constants {
+        static let spacingBetweenCarouselAndNewToWooCommerceButton: CGFloat = 20
+        static let newToWooCommerceURL = "https://woocommerce.com/woocommerce-features"
+    }
+
+    enum Localization {
+        static let newToWooCommerce = NSLocalizedString("New to WooCommerce?",
+                                                        comment: "Title of button in the login prologue screen for users who are new to WooCommerce.")
     }
 }

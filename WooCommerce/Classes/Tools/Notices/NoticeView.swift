@@ -8,11 +8,11 @@ class NoticeView: UIView {
 
     private let backgroundContainerView = UIView()
     private let backgroundView: UIVisualEffectView
-    private let actionBackgroundView = UIView()
     private let shadowLayer = CAShapeLayer()
     private let shadowMaskLayer = CAShapeLayer()
 
     private let titleLabel = UILabel()
+    private let subtitleLabel = UILabel()
     private let messageLabel = UILabel()
     private let actionButton = UIButton(type: .system)
 
@@ -117,6 +117,7 @@ private extension NoticeView {
         labelStackView.layoutMargins = Metrics.layoutMargins
 
         labelStackView.addArrangedSubview(titleLabel)
+        labelStackView.addArrangedSubview(subtitleLabel)
         labelStackView.addArrangedSubview(messageLabel)
 
         contentStackView.addArrangedSubview(labelStackView)
@@ -127,53 +128,61 @@ private extension NoticeView {
             ])
 
         titleLabel.font = Fonts.titleLabelFont
+        subtitleLabel.font = Fonts.subtitleLabelFont
         messageLabel.font = Fonts.messageLabelFont
 
         titleLabel.textColor = Appearance.titleColor
+        subtitleLabel.textColor = Appearance.titleColor
         messageLabel.textColor = Appearance.titleColor
     }
 
     func configureActionButton() {
-        contentStackView.addArrangedSubview(actionBackgroundView)
-        actionBackgroundView.translatesAutoresizingMaskIntoConstraints = false
-
-        actionBackgroundView.layoutMargins = Metrics.layoutMargins
-        actionBackgroundView.backgroundColor = Appearance.actionBackgroundColor
-
-        actionBackgroundView.addSubview(actionButton)
-        actionButton.translatesAutoresizingMaskIntoConstraints = false
+        contentStackView.addArrangedSubview(actionButton)
 
         NSLayoutConstraint.activate([
-            actionBackgroundView.topAnchor.constraint(equalTo: backgroundView.contentView.topAnchor),
-            actionBackgroundView.bottomAnchor.constraint(equalTo: backgroundView.contentView.bottomAnchor),
+            actionButton.topAnchor.constraint(equalTo: backgroundView.contentView.topAnchor),
+            actionButton.bottomAnchor.constraint(equalTo: backgroundView.contentView.bottomAnchor),
             ])
-
-        actionBackgroundView.pinSubviewToAllEdgeMargins(actionButton)
 
         actionButton.titleLabel?.font = Fonts.actionButtonFont
         actionButton.setTitleColor(Appearance.actionColor, for: .normal)
         actionButton.addTarget(self, action: #selector(actionButtonTapped), for: .touchUpInside)
         actionButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        actionButton.contentEdgeInsets = Metrics.actionButtonContentInsets
+        actionButton.backgroundColor = Appearance.actionBackgroundColor
     }
 
     func configureDismissRecognizer() {
         let recognizer = UITapGestureRecognizer(target: self, action: #selector(viewTapped))
         addGestureRecognizer(recognizer)
+
+        let swipeRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(viewSwiped))
+        swipeRecognizer.direction = .down
+        addGestureRecognizer(swipeRecognizer)
     }
 
     func configureForNotice() {
         titleLabel.text = notice.title
 
+        if let subtitle = notice.subtitle {
+            subtitleLabel.isHidden = false
+            subtitleLabel.text = subtitle
+        } else {
+            subtitleLabel.isHidden = true
+        }
+
         if let message = notice.message {
             messageLabel.text = message
+            messageLabel.numberOfLines = 0
         } else {
             titleLabel.numberOfLines = 2
         }
 
         if let actionTitle = notice.actionTitle {
             actionButton.setTitle(actionTitle, for: .normal)
+            actionButton.isHidden = false
         } else {
-            actionBackgroundView.isHidden = true
+            actionButton.isHidden = true
         }
     }
 }
@@ -184,6 +193,10 @@ private extension NoticeView {
 private extension NoticeView {
 
     @objc private func viewTapped() {
+        dismissHandler?()
+    }
+
+    @objc func viewSwiped() {
         dismissHandler?()
     }
 
@@ -201,12 +214,14 @@ private extension NoticeView {
     enum Metrics {
         static let cornerRadius: CGFloat = 13.0
         static let layoutMargins = UIEdgeInsets(top: 16.0, left: 16.0, bottom: 16.0, right: 16.0)
+        static let actionButtonContentInsets = UIEdgeInsets(top: 22.0, left: 16.0, bottom: 22.0, right: 16.0)
         static let labelLineSpacing: CGFloat = 18.0
     }
 
     enum Fonts {
         static let actionButtonFont = UIFont.systemFont(ofSize: 14.0)
         static let titleLabelFont = UIFont.boldSystemFont(ofSize: 14.0)
+        static let subtitleLabelFont = UIFont.boldSystemFont(ofSize: 14.0)
         static let messageLabelFont = UIFont.systemFont(ofSize: 14.0)
     }
 

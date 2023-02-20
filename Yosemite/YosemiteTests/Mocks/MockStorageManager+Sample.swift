@@ -20,6 +20,36 @@ extension MockStorageManager {
         return newAccount
     }
 
+    /// Inserts a new AccountSettings into the specified context.
+    ///
+    @discardableResult
+    func insertSampleAccountSettings(readOnlyAccountSettings: AccountSettings) -> StorageAccountSettings {
+        let newAccountSettings = viewStorage.insertNewObject(ofType: StorageAccountSettings.self)
+        newAccountSettings.update(with: readOnlyAccountSettings)
+
+        return newAccountSettings
+    }
+
+    /// Inserts a new (Sample) Payment Gateway Account into the specified context.
+    ///
+    @discardableResult
+    func insertSamplePaymentGatewayAccount(readOnlyAccount: PaymentGatewayAccount) -> StoragePaymentGatewayAccount {
+        let newAccount = viewStorage.insertNewObject(ofType: StoragePaymentGatewayAccount.self)
+        newAccount.update(with: readOnlyAccount)
+
+        return newAccount
+    }
+
+    /// Inserts a new (Sample) Payment Gateway into the specified context.
+    ///
+    @discardableResult
+    func insertSamplePaymentGateway(readOnlyGateway: PaymentGateway) -> StoragePaymentGateway {
+        let newGateway = viewStorage.insertNewObject(ofType: StoragePaymentGateway.self)
+        newGateway.update(with: readOnlyGateway)
+
+        return newGateway
+    }
+
     /// Inserts a new (Sample) Product into the specified context.
     ///
     @discardableResult
@@ -31,11 +61,18 @@ extension MockStorageManager {
     }
 
     /// Inserts a new (Sample) ProductVariation into the specified context.
+    /// Adds it to a product if required.
     ///
     @discardableResult
-    func insertSampleProductVariation(readOnlyProductVariation: ProductVariation) -> StorageProductVariation {
+    func insertSampleProductVariation(readOnlyProductVariation: ProductVariation, on readOnlyProduct: Product? = nil) -> StorageProductVariation {
         let newProductVariation = viewStorage.insertNewObject(ofType: StorageProductVariation.self)
         newProductVariation.update(with: readOnlyProductVariation)
+
+        if let readOnlyProduct = readOnlyProduct {
+            let newProduct = viewStorage.insertNewObject(ofType: StorageProduct.self)
+            newProduct.update(with: readOnlyProduct)
+            newProductVariation.product = newProduct
+        }
 
         return newProductVariation
     }
@@ -80,6 +117,20 @@ extension MockStorageManager {
         return newProductAttribute
     }
 
+    /// Inserts a new (Sample) `ProductAttributeTerm`. and links it to a parent `ProductAttribute` if available.
+    ///
+    @discardableResult
+    func insertSampleProductAttributeTerm(readOnlyTerm: ProductAttributeTerm, onAttributeWithID attributeID: Int64) -> StorageProductAttributeTerm {
+        let newProductAttributeTerm = viewStorage.insertNewObject(ofType: StorageProductAttributeTerm.self)
+        newProductAttributeTerm.update(with: readOnlyTerm)
+
+        if let attribute = viewStorage.loadProductAttribute(siteID: readOnlyTerm.siteID, attributeID: attributeID) {
+            newProductAttributeTerm.attribute = attribute
+        }
+
+        return newProductAttributeTerm
+    }
+
     /// Inserts a new (Sample) Order into the specified context.
     ///
     @discardableResult
@@ -88,5 +139,85 @@ extension MockStorageManager {
         newOrder.update(with: readOnlyOrder)
 
         return newOrder
+    }
+
+    /// Inserts a new (Sample) Coupon into the specified context.
+    ///
+    @discardableResult
+    func insertSampleCoupon(readOnlyCoupon: Coupon) -> StorageCoupon {
+        let newCoupon = viewStorage.insertNewObject(ofType: StorageCoupon.self)
+        newCoupon.update(with: readOnlyCoupon)
+
+        return newCoupon
+    }
+
+    /// Inserts a new (Sample) site into the specified context.
+    ///
+    @discardableResult
+    func insertSampleSite(readOnlySite: Site) -> StorageSite {
+        let newSite = viewStorage.insertNewObject(ofType: StorageSite.self)
+        newSite.update(with: readOnlySite)
+
+        return newSite
+    }
+
+    /// Inserts a new (Sample) SitePlugin into the specified context.
+    /// Administrators can fetch installed plugins as SitePlugins. Shop Managers cannot.
+    ///
+    @discardableResult
+    func insertSampleSitePlugin(readOnlySitePlugin: SitePlugin) -> StorageSitePlugin {
+        let newPlugin = viewStorage.insertNewObject(ofType: StorageSitePlugin.self)
+        newPlugin.update(with: readOnlySitePlugin)
+
+        return newPlugin
+    }
+
+    /// Inserts a new (Sample) SystemPlugin into the specified context.
+    /// Shop Managers AND Administrators can fetch installed plugins as SystemPlugins.
+    ///
+    @discardableResult
+    func insertSampleSystemPlugin(readOnlySystemPlugin: SystemPlugin) -> StorageSystemPlugin {
+        let newPlugin = viewStorage.insertNewObject(ofType: StorageSystemPlugin.self)
+        newPlugin.update(with: readOnlySystemPlugin)
+
+        return newPlugin
+    }
+
+    /// Inserts a new (Sample) Setting into the specified context.
+    ///
+    @discardableResult
+    func insertSampleSiteSetting(readOnlySiteSetting: SiteSetting) -> StorageSiteSetting {
+        let newSetting = viewStorage.insertNewObject(ofType: StorageSiteSetting.self)
+        newSetting.update(with: readOnlySiteSetting)
+
+        return newSetting
+    }
+
+    /// Inserts new sample countries into the specified context.
+    ///
+    @discardableResult
+    func insertSampleCountries(readOnlyCountries: [Country]) -> [StorageCountry] {
+        let storedCountries: [StorageCountry] = readOnlyCountries.map { readOnlyCountry in
+            let newCountry = viewStorage.insertNewObject(ofType: StorageCountry.self)
+            newCountry.update(with: readOnlyCountry)
+            readOnlyCountry.states.forEach { readOnlyState in
+                let newState = viewStorage.insertNewObject(ofType: StorageStateOfACountry.self)
+                newState.update(with: readOnlyState)
+                newCountry.states.insert(newState)
+            }
+
+            return newCountry
+        }
+        return storedCountries
+    }
+
+    /// Inserts a new sample InboxNote into the specified context.
+    ///
+    @discardableResult
+    func insertSampleInboxNote(readOnlyInboxNote: InboxNote) -> StorageInboxNote {
+        let newInboxNote = viewStorage.insertNewObject(ofType: StorageInboxNote.self)
+        newInboxNote.update(with: readOnlyInboxNote)
+
+        return newInboxNote
     }
 }

@@ -47,16 +47,15 @@ private extension LinkedProductsViewController {
         title = Localization.titleView
 
         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(completeUpdating))
-        removeNavigationBackBarButtonText()
     }
 
     func configureMainView() {
-        view.backgroundColor = .listForeground
+        view.backgroundColor = .listForeground(modal: false)
     }
 
     func configureTableView() {
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.backgroundColor = .listForeground
+        tableView.backgroundColor = .listForeground(modal: false)
         tableView.separatorStyle = .none
 
         registerTableViewCells()
@@ -140,10 +139,12 @@ private extension LinkedProductsViewController {
 
     func configureUpsellsProducts(cell: NumberOfLinkedProductsTableViewCell) {
         cell.configure(content: Localization.upsellAndCrossSellProducts(count: viewModel.upsellIDs.count))
+        cell.selectionStyle = .none
     }
 
     func configureCrossSellsProducts(cell: NumberOfLinkedProductsTableViewCell) {
         cell.configure(content: Localization.upsellAndCrossSellProducts(count: viewModel.crossSellIDs.count))
+        cell.selectionStyle = .none
     }
 
     func configureUpsellsButton(cell: ButtonTableViewCell) {
@@ -174,7 +175,7 @@ private extension LinkedProductsViewController {
             return
         }
 
-        let viewConfiguration = LinkedProductsListSelectorViewController.ViewConfiguration(title: Localization.titleScreenAddUpsellProducts,
+        let viewConfiguration = LinkedProductsListSelectorViewController.ViewConfiguration(title: Localization.titleScreenAddCrossSellProducts,
                                                                                            trackingContext: "cross_sells")
 
         let viewController = LinkedProductsListSelectorViewController(product: product.product,
@@ -287,9 +288,8 @@ private extension LinkedProductsViewController {
             }()
         }
 
-        static let titleScreenAddUpsellProducts = NSLocalizedString("Upsells Products",
-                                                                    comment: "Navigation bar title for editing linked products for upsell products")
-        static let titleScreenAddCrossSellProducts = NSLocalizedString("Cross-sells Products",
+        static let titleScreenAddUpsellProducts = NSLocalizedString("Upsells", comment: "Navigation bar title for editing linked products for upsell products")
+        static let titleScreenAddCrossSellProducts = NSLocalizedString("Cross-sells",
                                                                        comment: "Navigation bar title for editing linked products for cross-sell products")
     }
 }

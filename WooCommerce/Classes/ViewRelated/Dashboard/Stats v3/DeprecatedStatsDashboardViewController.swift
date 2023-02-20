@@ -4,6 +4,18 @@ import UIKit
 /// Empty state screen shown when the store stats version is not supported
 ///
 final class DeprecatedDashboardStatsViewController: UIViewController {
+    /// For navigation bar large title workaround.
+    ///
+    weak var scrollDelegate: DashboardUIScrollDelegate?
+
+    /// Set externally to try refreshing stats data if available.
+    var onPullToRefresh: @MainActor () async -> Void = {}
+
+    /// Scroll view for pull-to-refresh support.
+    private lazy var scrollView: UIScrollView = .init()
+
+    /// Pull-to-refresh support in case dashboard stats are enabled.
+    private lazy var refreshControl: UIRefreshControl = UIRefreshControl()
 
     /// Empty state screen
     ///
@@ -21,6 +33,7 @@ final class DeprecatedDashboardStatsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        configureScrollView()
         displayEmptyViewController()
     }
 
@@ -30,11 +43,36 @@ final class DeprecatedDashboardStatsViewController: UIViewController {
         addChild(emptyStateViewController)
 
         emptyStateViewController.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(emptyStateViewController.view)
+        scrollView.addSubview(emptyStateViewController.view)
+        emptyStateViewController.view.pinSubviewToAllEdges(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.widthAnchor.constraint(equalTo: emptyStateViewController.view.widthAnchor),
+            scrollView.heightAnchor.constraint(equalTo: emptyStateViewController.view.heightAnchor)
+        ])
 
-        emptyStateViewController.view.pinSubviewToAllEdges(view)
         emptyStateViewController.didMove(toParent: self)
         emptyStateViewController.configure(emptyStateConfig)
+    }
+}
+
+private extension DeprecatedDashboardStatsViewController {
+    func configureScrollView() {
+        view.addSubview(scrollView)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        view.pinSubviewToSafeArea(scrollView)
+
+        configureRefreshControl()
+    }
+
+    func configureRefreshControl() {
+        scrollView.refreshControl = refreshControl
+        refreshControl.on(.valueChanged) { [weak self] refreshControl in
+            guard let self = self else { return }
+            Task { @MainActor in
+                await self.onPullToRefresh()
+                self.refreshControl.endRefreshing()
+            }
+        }
     }
 }
 
@@ -42,14 +80,7 @@ final class DeprecatedDashboardStatsViewController: UIViewController {
 // Everything is empty as this deprecated stats screen is static
 extension DeprecatedDashboardStatsViewController: DashboardUI {
 
-    var displaySyncingErrorNotice: () -> Void {
-        get {
-            return {}
-        }
-        set {}
-    }
-
-    var onPullToRefresh: () -> Void {
+    var displaySyncingError: () -> Void {
         get {
             return {}
         }
@@ -57,7 +88,8 @@ extension DeprecatedDashboardStatsViewController: DashboardUI {
     }
 
     func remindStatsUpgradeLater() {}
-    func reloadData(completion: @escaping () -> Void) {}
+    @MainActor
+    func reloadData(forced: Bool) async {}
 }
 
 // MARK: Constants

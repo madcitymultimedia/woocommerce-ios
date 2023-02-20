@@ -7,7 +7,7 @@ import protocol Storage.StorageManagerType
 final class OrderDetailsResultsControllers {
     private let storageManager: StorageManagerType
 
-    private let order: Order
+    private var order: Order
     private let siteID: Int64
 
     /// Shipment Tracking ResultsController.
@@ -32,12 +32,7 @@ final class OrderDetailsResultsControllers {
 
     /// ProductVariation ResultsController.
     ///
-    private lazy var productVariationResultsController: ResultsController<StorageProductVariation> = {
-        let variationIDs = order.items.map(\.variationID).filter { $0 != 0 }
-        let predicate = NSPredicate(format: "siteID == %lld AND productVariationID in %@", siteID, variationIDs)
-
-        return ResultsController<StorageProductVariation>(storageManager: storageManager, matching: predicate, sortedBy: [])
-    }()
+    private lazy var productVariationResultsController: ResultsController<StorageProductVariation> = getProductVariationResultsController()
 
     /// Status Results Controller.
     ///
@@ -68,6 +63,20 @@ final class OrderDetailsResultsControllers {
         return ResultsController<StorageShippingLabel>(storageManager: storageManager,
                                                        matching: predicate,
                                                        sortedBy: [dateCreatedDescriptor, shippingLabelIDDescriptor])
+    }()
+
+    /// AddOnGroup ResultsController.
+    ///
+    private lazy var addOnGroupResultsController: ResultsController<StorageAddOnGroup> = {
+        let predicate = NSPredicate(format: "siteID == %lld", siteID)
+        return ResultsController<StorageAddOnGroup>(storageManager: storageManager, matching: predicate, sortedBy: [])
+    }()
+
+    /// Site Plugins ResultsController.
+    ///
+    private lazy var sitePluginsResultsController: ResultsController<StorageSitePlugin> = {
+        let predicate = NSPredicate(format: "siteID == %lld", siteID)
+        return ResultsController<StorageSitePlugin>(storageManager: storageManager, matching: predicate, sortedBy: [])
     }()
 
     /// Order shipment tracking list
@@ -106,6 +115,20 @@ final class OrderDetailsResultsControllers {
         return shippingLabelResultsController.fetchedObjects
     }
 
+    /// Site's add-on groups.
+    ///
+    var addOnGroups: [AddOnGroup] {
+        return addOnGroupResultsController.fetchedObjects
+    }
+
+    var sitePlugins: [SitePlugin] {
+        return sitePluginsResultsController.fetchedObjects
+    }
+
+    /// Completion handler for when results controllers reload.
+    ///
+    var onReload: (() -> Void)?
+
     init(order: Order,
          storageManager: StorageManagerType = ServiceLocator.storageManager) {
         self.order = order
@@ -114,12 +137,25 @@ final class OrderDetailsResultsControllers {
     }
 
     func configureResultsControllers(onReload: @escaping () -> Void) {
+        self.onReload = onReload
         configureStatusResultsController()
         configureTrackingResultsController(onReload: onReload)
         configureProductResultsController(onReload: onReload)
         configureProductVariationResultsController(onReload: onReload)
         configureRefundResultsController(onReload: onReload)
         configureShippingLabelResultsController(onReload: onReload)
+        configureAddOnGroupResultsController(onReload: onReload)
+        configureSitePluginsResultsController(onReload: onReload)
+    }
+
+    func update(order: Order) {
+        self.order = order
+        // Product variation results controller depends on order items to load variations,
+        // so we need to recreate it whenever receiving an updated order.
+        self.productVariationResultsController = getProductVariationResultsController()
+        if let onReload = onReload {
+            configureProductVariationResultsController(onReload: onReload)
+        }
     }
 }
 
@@ -127,8 +163,19 @@ final class OrderDetailsResultsControllers {
 //
 private extension OrderDetailsResultsControllers {
 
+    func getProductVariationResultsController() -> ResultsController<StorageProductVariation> {
+        let variationIDs = order.items.map(\.variationID).filter { $0 != 0 }
+        let predicate = NSPredicate(format: "siteID == %lld AND productVariationID in %@", siteID, variationIDs)
+
+        return ResultsController<StorageProductVariation>(storageManager: storageManager, matching: predicate, sortedBy: [])
+    }
+
     func configureStatusResultsController() {
-        try? statusResultsController.performFetch()
+        do {
+            try statusResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch Order Statuses: \(error)")
+        }
     }
 
     private func configureTrackingResultsController(onReload: @escaping () -> Void) {
@@ -144,7 +191,11 @@ private extension OrderDetailsResultsControllers {
             onReload()
         }
 
-        try? trackingResultsController.performFetch()
+        do {
+            try trackingResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch Order \(order.orderID) shipment tracking details: \(error)")
+        }
     }
 
     private func configureProductResultsController(onReload: @escaping () -> Void) {
@@ -160,7 +211,11 @@ private extension OrderDetailsResultsControllers {
             onReload()
         }
 
-        try? productResultsController.performFetch()
+        do {
+            try productResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch Products for Site \(siteID): \(error)")
+        }
     }
 
     private func configureProductVariationResultsController(onReload: @escaping () -> Void) {
@@ -196,7 +251,11 @@ private extension OrderDetailsResultsControllers {
             onReload()
         }
 
-        try? refundResultsController.performFetch()
+        do {
+            try refundResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch Refunds for Site \(siteID) and Order \(order.orderID): \(error)")
+        }
     }
 
     private func configureShippingLabelResultsController(onReload: @escaping () -> Void) {
@@ -210,7 +269,47 @@ private extension OrderDetailsResultsControllers {
             onReload()
         }
 
-        try? shippingLabelResultsController.performFetch()
+        do {
+            try shippingLabelResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch ShippingLabels for Site \(siteID) and Order \(order.orderID): \(error)")
+        }
+    }
+
+    private func configureAddOnGroupResultsController(onReload: @escaping () -> Void) {
+        addOnGroupResultsController.onDidChangeContent = {
+            onReload()
+        }
+
+        addOnGroupResultsController.onDidResetContent = { [weak self] in
+            guard let self = self else { return }
+            self.refetchAllResultsControllers()
+            onReload()
+        }
+
+        do {
+            try addOnGroupResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch AddOnGroups for Site \(siteID): \(error)")
+        }
+    }
+
+    private func configureSitePluginsResultsController(onReload: @escaping () -> Void) {
+        sitePluginsResultsController.onDidChangeContent = {
+            onReload()
+        }
+
+        sitePluginsResultsController.onDidResetContent = { [weak self] in
+            guard let self = self else { return }
+            self.refetchAllResultsControllers()
+            onReload()
+        }
+
+        do {
+            try sitePluginsResultsController.performFetch()
+        } catch {
+            DDLogError("⛔️ Unable to fetch Site Plugins for Site \(siteID): \(error)")
+        }
     }
 
     /// Refetching all the results controllers is necessary after a storage reset in `onDidResetContent` callback and before reloading UI that
@@ -222,5 +321,7 @@ private extension OrderDetailsResultsControllers {
         try? trackingResultsController.performFetch()
         try? statusResultsController.performFetch()
         try? shippingLabelResultsController.performFetch()
+        try? addOnGroupResultsController.performFetch()
+        try? sitePluginsResultsController.performFetch()
     }
 }

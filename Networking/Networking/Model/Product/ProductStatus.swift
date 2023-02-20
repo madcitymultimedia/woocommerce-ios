@@ -1,13 +1,14 @@
 import Foundation
-
+import Codegen
 
 /// Represents a ProductStatus Entity.
 ///
-public enum ProductStatus: Decodable, Hashable {
-    case publish
+public enum ProductStatus: Codable, Hashable, GeneratedFakeable {
+    case published
     case draft
     case pending
     case privateStatus  // `private` is a reserved keyword
+    case autoDraft
     case custom(String) // in case there are extensions modifying product statuses
 }
 
@@ -20,14 +21,16 @@ extension ProductStatus: RawRepresentable {
     ///
     public init(rawValue: String) {
         switch rawValue {
-        case Keys.publish:
-            self = .publish
+        case Keys.published:
+            self = .published
         case Keys.draft:
             self = .draft
         case Keys.pending:
             self = .pending
         case Keys.privateStatus:
             self = .privateStatus
+        case Keys.autoDraft:
+            self = .autoDraft
         default:
             self = .custom(rawValue)
         }
@@ -37,10 +40,11 @@ extension ProductStatus: RawRepresentable {
     ///
     public var rawValue: String {
         switch self {
-        case .publish:              return Keys.publish
+        case .published:              return Keys.published
         case .draft:                return Keys.draft
         case .pending:              return Keys.pending
         case .privateStatus:        return Keys.privateStatus
+        case .autoDraft:            return Keys.autoDraft
         case .custom(let payload):  return payload
         }
     }
@@ -49,7 +53,7 @@ extension ProductStatus: RawRepresentable {
     ///
     public var description: String {
         switch self {
-        case .publish:
+        case .published:
             return NSLocalizedString("Published", comment: "Display label for the product's published status")
         case .draft:
             return NSLocalizedString("Draft", comment: "Display label for the product's draft status")
@@ -57,6 +61,8 @@ extension ProductStatus: RawRepresentable {
             return NSLocalizedString("Pending review", comment: "Display label for the product's pending status")
         case .privateStatus:
             return NSLocalizedString("Privately published", comment: "Display label for the product's private status")
+        case .autoDraft:
+            return "Auto Draft" // We don't need to localize this now.
         case .custom(let payload):
             return payload // unable to localize at runtime.
         }
@@ -67,8 +73,9 @@ extension ProductStatus: RawRepresentable {
 /// Enum containing the 'Known' ProductType Keys
 ///
 private enum Keys {
-    static let publish       = "publish"
+    static let published     = "publish"
     static let draft         = "draft"
     static let pending       = "pending"
     static let privateStatus = "private"
+    static let autoDraft     = "auto-draft"
 }

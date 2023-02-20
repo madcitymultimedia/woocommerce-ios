@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 import Yosemite
 import Storage
@@ -30,6 +31,8 @@ final class ManualTrackingViewController: UIViewController {
         }
         return keyboardFrameObserver
     }()
+
+    private var valueSubscriptions: Set<AnyCancellable> = []
 
     init(viewModel: ManualTrackingViewModel) {
         self.viewModel = viewModel
@@ -66,8 +69,9 @@ private extension ManualTrackingViewController {
     func configureNavigation() {
         configureTitle()
         configureDismissButton()
-        configureBackButton()
         configureAddButton()
+        // Disables the ability to dismiss the view controller via a pull-down gesture, in order to avoid losing unsaved changes.
+        navigationController?.presentationController?.delegate = self
     }
 
     func configureTitle() {
@@ -82,16 +86,6 @@ private extension ManualTrackingViewController {
                                             target: self,
                                             action: #selector(dismissButtonTapped))
         navigationItem.setLeftBarButton(leftBarButton, animated: false)
-    }
-
-    func configureBackButton() {
-        // Don't show the title in the next-view's back button
-        let backButton = UIBarButtonItem(title: String(),
-                                         style: .plain,
-                                         target: nil,
-                                         action: nil)
-
-        navigationItem.backBarButtonItem = backButton
     }
 
     func removeProgressIndicator() {
@@ -142,12 +136,19 @@ private extension ManualTrackingViewController {
     }
 
     @objc func dismissButtonTapped() {
+        guard !viewModel.hasUnsavedChanges else {
+            return displayDismissConfirmationAlert()
+        }
         dismiss()
     }
 
     @objc func primaryButtonTapped() {
         ServiceLocator.analytics.track(.orderShipmentTrackingAddButtonTapped)
+        guard viewModel.canCommit else {
+            return
+        }
         viewModel.isCustom ? addCustomTracking() : addTracking()
+        viewModel.saveSelectedShipmentProvider()
     }
 }
 
@@ -249,9 +250,9 @@ extension ManualTrackingViewController: UITableViewDataSource {
         cell.update(viewModel: cellViewModel)
         cell.accessoryType = .none
 
-        _ = cellViewModel.value.subscribe { [weak self] in
+        cellViewModel.$value.sink { [weak self] in
             self?.didChangeProviderName(value: $0)
-        }
+        }.store(in: &valueSubscriptions)
     }
 
     private func configureTrackingNumber(cell: TitleAndEditableValueTableViewCell) {
@@ -264,9 +265,9 @@ extension ManualTrackingViewController: UITableViewDataSource {
         cell.update(viewModel: cellViewModel)
         cell.accessoryType = .none
 
-        _ = cellViewModel.value.subscribe { [weak self] in
+        cellViewModel.$value.sink { [weak self] in
             self?.didChangeTrackingNumber(value: $0)
-        }
+        }.store(in: &valueSubscriptions)
     }
 
     private func configureTrackingLink(cell: TitleAndEditableValueTableViewCell) {
@@ -278,9 +279,9 @@ extension ManualTrackingViewController: UITableViewDataSource {
         cell.update(viewModel: cellViewModel)
         cell.accessoryType = .none
 
-        _ = cellViewModel.value.subscribe { [weak self] in
+        cellViewModel.$value.sink { [weak self] in
             self?.didChangeTrackingLink(value: $0)
-        }
+        }.store(in: &valueSubscriptions)
     }
 
     private func configureDateShipped(cell: TitleAndEditableValueTableViewCell) {
@@ -449,10 +450,21 @@ private extension ManualTrackingViewController {
 
 // MARK: - Navigation bar management
 //
-/// Activates the action button (Add/Edit) if there is anough data to add or edit a shipment tracking
+/// Activates the action button (Add/Edit) if there is enough data to add or edit a shipment tracking
 private extension ManualTrackingViewController {
     private func activateActionButtonIfNecessary() {
         navigationItem.rightBarButtonItem?.isEnabled = viewModel.canCommit
+    }
+}
+
+// MARK: - UISheetPresentationControllerDelegate comformance
+//
+extension ManualTrackingViewController: UISheetPresentationControllerDelegate {
+    func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool {
+        viewModel.hasUnsavedChanges == false
+    }
+    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+        displayDismissConfirmationAlert()
     }
 }
 
@@ -554,6 +566,11 @@ private extension ManualTrackingViewController {
 
         ServiceLocator.stores.dispatch(action)
 
+    }
+    func displayDismissConfirmationAlert() {
+        UIAlertController.presentDiscardChangesActionSheet(viewController: self,
+                                                           onDiscard: {[weak self] in self?.dismiss(animated: true)}
+        )
     }
 
     func dismiss() {

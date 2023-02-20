@@ -68,7 +68,7 @@ final class FetchResultSnapshotsProviderTests: XCTestCase {
         let provider = FetchResultSnapshotsProvider(storageManager: storageManager, query: query)
 
         // When
-        let snapshot: FetchResultSnapshot = try waitFor { promise in
+        let snapshot: FetchResultSnapshot = waitFor { promise in
             provider.snapshot.first().sink { snapshot in
                 promise(snapshot)
             }.store(in: &self.cancellables)
@@ -247,7 +247,7 @@ final class FetchResultSnapshotsProviderTests: XCTestCase {
 
         try viewStorage.obtainPermanentIDs(for: [zanza, zagato, yamada])
 
-        let derivedStorage = storageManager.newDerivedStorage()
+        let derivedStorage = storageManager.writerDerivedStorage
 
         let query = FetchResultSnapshotsProvider<StorageAccount>.Query(
             sortDescriptor: .init(keyPath: \StorageAccount.username, ascending: false)
@@ -295,7 +295,7 @@ final class FetchResultSnapshotsProviderTests: XCTestCase {
 
         try viewStorage.obtainPermanentIDs(for: [account, orderStatus])
 
-        let derivedStorage = storageManager.newDerivedStorage()
+        let derivedStorage = storageManager.writerDerivedStorage
 
         let query = FetchResultSnapshotsProvider<StorageAccount>.Query(
             sortDescriptor: .init(keyPath: \StorageAccount.username, ascending: false)
@@ -334,7 +334,7 @@ final class FetchResultSnapshotsProviderTests: XCTestCase {
 
         try viewStorage.obtainPermanentIDs(for: [account, excludedAccount])
 
-        let derivedStorage = storageManager.newDerivedStorage()
+        let derivedStorage = storageManager.writerDerivedStorage
 
         let query = FetchResultSnapshotsProvider<StorageAccount>.Query(
             sortDescriptor: .init(keyPath: \StorageAccount.username, ascending: false),

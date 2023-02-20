@@ -2,9 +2,33 @@ import UIKit
 import Yosemite
 
 struct ProductsTopBannerFactory {
+
+    enum BannerType {
+        case general
+
+        var title: String {
+            Localization.title
+        }
+
+        var info: String {
+            switch self {
+            case .general:
+                return Localization.topBannerInfo
+            }
+        }
+
+        var feedbackContext: WooAnalyticsEvent.FeedbackContext {
+            switch self {
+            case .general:
+                return .productsGeneral
+            }
+        }
+    }
+
     /// Creates a products tab top banner asynchronously based on the app settings.
     /// - Parameters:
     ///   - isExpanded: whether the top banner is expanded by default.
+    ///   - type: sets banner content and related analytics events.
     ///   - expandedStateChangeHandler: called when the top banner expanded state changes.
     ///   - onGiveFeedbackButtonPressed: called the give feedback button is pressed.
     ///   - onDismissButtonPressed: called the dismiss button is pressed
@@ -12,19 +36,20 @@ struct ProductsTopBannerFactory {
     static func topBanner(isExpanded: Bool,
                           stores: StoresManager = ServiceLocator.stores,
                           analytics: Analytics = ServiceLocator.analytics,
+                          type: BannerType,
                           expandedStateChangeHandler: @escaping () -> Void,
                           onGiveFeedbackButtonPressed: @escaping () -> Void,
                           onDismissButtonPressed: @escaping () -> Void,
                           onCompletion: @escaping (TopBannerView) -> Void) {
-        let title = Localization.title
+        let title = type.title
+        let infoText = type.info
         let icon: UIImage = .megaphoneIcon
-        let infoText = Localization.info
-        let giveFeedbackAction = TopBannerViewModel.ActionButton(title: Localization.giveFeedback) {
-            analytics.track(event: .featureFeedbackBanner(context: .productsM4, action: .gaveFeedback))
+        let giveFeedbackAction = TopBannerViewModel.ActionButton(title: Localization.giveFeedback) { _ in
+            analytics.track(event: .featureFeedbackBanner(context: type.feedbackContext, action: .gaveFeedback))
             onGiveFeedbackButtonPressed()
         }
-        let dismissAction = TopBannerViewModel.ActionButton(title: Localization.dismiss) {
-            analytics.track(event: .featureFeedbackBanner(context: .productsM4, action: .dismissed))
+        let dismissAction = TopBannerViewModel.ActionButton(title: Localization.dismiss) { _ in
+            analytics.track(event: .featureFeedbackBanner(context: type.feedbackContext, action: .dismissed))
             onDismissButtonPressed()
         }
         let actions = [giveFeedbackAction, dismissAction]
@@ -42,13 +67,11 @@ struct ProductsTopBannerFactory {
 
 private extension ProductsTopBannerFactory {
     enum Localization {
-        static let title =
-            NSLocalizedString("Create products from the app!",
-                              comment: "The title of the Work In Progress top banner on the Products tab when Products feature switch is enabled.")
-        static let info =
-            NSLocalizedString(
-                "It’s now possible to create simple, grouped \nand external products on the go from the Woo app. Not ready yet? Save them as draft!",
-                comment: "The info of the Work In Progress top banner on the Products tab when Products feature switch is enabled.")
+        static let title = NSLocalizedString("New features available!",
+                                             comment: "The title of the top banner on the Products tab.")
+
+        static let topBannerInfo = "" // The info of the top banner on the Products tab.
+
         static let giveFeedback =
             NSLocalizedString("Give feedback",
                               comment: "The title of the button to give feedback about products beta features on the banner on the products tab")

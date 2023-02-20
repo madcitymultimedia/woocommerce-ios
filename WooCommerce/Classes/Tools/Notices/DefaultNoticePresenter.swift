@@ -20,16 +20,29 @@ class DefaultNoticePresenter: NoticePresenter {
     ///
     private var noticeOnScreen: Notice?
 
+    var kvoToken: NSKeyValueObservation?
+
     /// UIViewController to be used as Notice(s) Presenter
     ///
     weak var presentingViewController: UIViewController?
 
+    /// Observes keyboard and repositions Notice
+    ///
+    private var keyboardFrameObserver: KeyboardFrameObserver?
 
     /// Enqueues the specified Notice for display.
     ///
-    func enqueue(notice: Notice) {
+    @discardableResult
+    func enqueue(notice: Notice) -> Bool {
+        guard
+            noticeOnScreen != notice, // Ignore if we are already presenting this notice.
+            !notices.contains(notice) // Ignore if this notice is already enqueued and waiting for presentation.
+        else {
+            return false
+        }
         notices.append(notice)
         presentNextNoticeIfPossible()
+        return true
     }
 }
 
@@ -93,6 +106,32 @@ private extension DefaultNoticePresenter {
         noticeView.translatesAutoresizingMaskIntoConstraints = false
 
         let noticeContainerView = NoticeContainerView(noticeView: noticeView)
+
+        var onScreenBottomOffsetAdjustedForKeyboard: CGFloat = 0
+        keyboardFrameObserver = KeyboardFrameObserver { [weak self] keyboardFrame in
+            guard let self = self else { return }
+
+            onScreenBottomOffsetAdjustedForKeyboard = -keyboardFrame.height
+
+            // Subtract the tab bar height from keyboard height, if keyboard is visible
+            // to avoid having extra gap between keyboard and notice, when `offscreenBottomOffset` has a positive value
+            //
+            if keyboardFrame.height > 0 {
+                onScreenBottomOffsetAdjustedForKeyboard -= self.offscreenBottomOffset
+            }
+
+            // Adjust the bottom constraint ONLY if the noticeContainerView is already presented.
+            // If noticeContainerView is not already presented, it will be presented using onScreenBottomOffsetAdjustedForKeyboard.
+            //
+            if noticeContainerView.superview != nil {
+                noticeContainerView.noticeBottomConstraint.constant = onScreenBottomOffsetAdjustedForKeyboard
+                self.animatePresentation(toState: {
+                    noticeContainerView.layoutIfNeeded()
+                })
+            }
+        }
+        keyboardFrameObserver?.startObservingKeyboardFrame(sendInitialEvent: true)
+
         addNoticeContainerToPresentingViewController(noticeContainerView)
 
         NSLayoutConstraint.activate([
@@ -101,7 +140,10 @@ private extension DefaultNoticePresenter {
             makeBottomConstraintForNoticeContainer(noticeContainerView)
         ])
 
-        let offScreenState = {
+        let offScreenState = { [weak noticeView, weak self] in
+            guard let noticeView = noticeView, let self = self else {
+                return
+            }
             noticeView.alpha = UIKitConstants.alphaZero
             noticeContainerView.noticeBottomConstraint.constant = self.offscreenBottomOffset
 
@@ -110,26 +152,18 @@ private extension DefaultNoticePresenter {
 
         let onScreenState = {
             noticeView.alpha = UIKitConstants.alphaFull
-            noticeContainerView.noticeBottomConstraint.constant = 0
+            noticeContainerView.noticeBottomConstraint.constant = onScreenBottomOffsetAdjustedForKeyboard
 
             noticeContainerView.layoutIfNeeded()
         }
 
-        let hiddenState = {
-            noticeView.alpha = UIKitConstants.alphaZero
-        }
-
-        let dismiss = {
-            guard noticeContainerView.superview != nil else {
+        let hiddenState = { [weak noticeView] in
+            guard let noticeView = noticeView else {
                 return
             }
-
-            self.animatePresentation(fromState: {}, toState: hiddenState, completion: {
-                noticeContainerView.removeFromSuperview()
-                self.dismiss()
-            })
+            noticeView.alpha = UIKitConstants.alphaZero
         }
-
+        let dismiss = dismissHandler(for: noticeContainerView, fromState: {}, toState: hiddenState)
         noticeView.dismissHandler = dismiss
 
         if let feedbackType = notice.feedbackType {
@@ -141,8 +175,25 @@ private extension DefaultNoticePresenter {
         })
     }
 
+    private func dismissHandler(for noticeContainerView: UIView,
+                                fromState: (() -> Void)? = nil,
+                                toState: @escaping () -> Void) -> () -> Void {
+        return {
+            guard noticeContainerView.superview != nil else {
+                return
+            }
+
+            self.animatePresentation(fromState: fromState, toState: toState, completion: {
+                noticeContainerView.removeFromSuperview()
+                self.dismiss()
+            })
+        }
+    }
+
     func dismiss() {
         noticeOnScreen = nil
+        keyboardFrameObserver = nil
+        kvoToken = nil
         presentNextNoticeIfPossible()
     }
 
@@ -159,7 +210,20 @@ private extension DefaultNoticePresenter {
             fatalError("NoticePresenter requires a presentingViewController!")
         }
 
-        if let tabBarController = presentingViewController as? UITabBarController {
+        if let tabBarController = presentingViewController as? UITabBarController,
+           !tabBarController.tabBar.isHidden {
+            if kvoToken == nil {
+                kvoToken = tabBarController.tabBar.observe(\.isHidden, options: .new) { tabBar, _ in
+                    guard tabBar.isHidden else {
+                        return
+                    }
+
+                    // If the tab bar hides we also hide the notice, as trying to rearrange the notice accordingly might bring unexpected results
+                    // due to the internal logic of UITabBarController e.g they remove/recreate the tab bar when navigation happens
+                    container.isHidden = true
+                }
+            }
+
             return container.bottomAnchor.constraint(equalTo: tabBarController.tabBar.topAnchor)
         }
 
@@ -174,8 +238,10 @@ private extension DefaultNoticePresenter {
         return 0
     }
 
-    func animatePresentation(fromState: () -> Void, toState: @escaping () -> Void, completion: @escaping () -> Void) {
-        fromState()
+    func animatePresentation(fromState: (() -> Void)? = nil,
+                             toState: @escaping () -> Void,
+                             completion: (() -> Void)? = nil) {
+        fromState?()
 
         UIView.animate(withDuration: Animations.appearanceDuration,
                        delay: 0,
@@ -184,7 +250,7 @@ private extension DefaultNoticePresenter {
                        options: [],
                        animations: toState,
                        completion: { _ in
-                        completion()
+                        completion?()
         })
     }
 

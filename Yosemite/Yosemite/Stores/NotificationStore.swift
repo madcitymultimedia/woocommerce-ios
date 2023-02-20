@@ -38,7 +38,11 @@ public class NotificationStore: Store {
         }
 
         switch action {
-        case .registerDevice(let device, let applicationId, let applicationVersion, let defaultStoreID, let onCompletion):
+        case .registerDevice(let device,
+                             let applicationId,
+                             let applicationVersion,
+                             let defaultStoreID,
+                             let onCompletion):
             registerDevice(device: device,
                            applicationId: applicationId,
                            applicationVersion: applicationVersion,
@@ -371,7 +375,7 @@ extension NotificationStore {
     static func sharedDerivedStorage(with manager: StorageManagerType) -> StorageType {
         lock.lock()
         if privateStorage == nil {
-            privateStorage = manager.newDerivedStorage()
+            privateStorage = manager.writerDerivedStorage
         }
         lock.unlock()
 

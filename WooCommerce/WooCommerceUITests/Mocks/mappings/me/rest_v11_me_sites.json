@@ -4,10 +4,10 @@
         "method": "GET",
         "queryParameters": {
           "fields": {
-            "equalTo": "ID,name,description,URL,options"
+            "equalTo": "ID,name,description,URL,options,jetpack,jetpack_connection"
           },
           "options": {
-            "equalTo": "timezone,is_wpcom_store,woocommerce_is_active,gmt_offset"
+            "equalTo": "timezone,is_wpcom_store,woocommerce_is_active,gmt_offset,jetpack_connection_active_plugins,admin_url,login_url,frame_nonce"
           }
         }
     },
@@ -20,9 +20,13 @@
                       "name": "Your WooCommerce Store",
                       "description": "",
                       "URL": "http:\/\/yourwoosite.com",
+                      "jetpack": true,
+                      "jetpack_connection": true,
                       "options": {
                         "timezone": "",
                         "gmt_offset": 0,
+                        "admin_url": "http:\/\/yourwoosite.com/wp-admin/",
+                        "login_url": "http:\/\/yourwoosite.com/wp-login.php",
                         "is_wpcom_store": true,
                         "woocommerce_is_active": true,
                         "jetpack_version": "8.1.1",
@@ -34,7 +38,8 @@
                         "wp_max_memory_limit": "268435456",
                         "is_multi_network": false,
                         "is_multi_site": false,
-                        "file_mod_disabled": ["wp_auto_update_core_disabled"]
+                        "file_mod_disabled": ["wp_auto_update_core_disabled"],
+                        "frame_nonce": "e7bfd785f0"
                       }
                 }
             ]

@@ -12,7 +12,10 @@ protocol UserNotificationsCenterAdapter {
 
     /// Requests Push Notifications Authorization
     ///
-    func requestAuthorization(queue: DispatchQueue, completion: @escaping (Bool) -> Void)
+    func requestAuthorization(queue: DispatchQueue, includesProvisionalAuth: Bool, completion: @escaping (Bool) -> Void)
+
+    /// Removes all push notifications that have been delivered or scheduled
+    func removeAllNotifications()
 }
 
 
@@ -32,11 +35,17 @@ extension UNUserNotificationCenter: UserNotificationsCenterAdapter {
 
     /// Requests Push Notifications Authorization
     ///
-    func requestAuthorization(queue: DispatchQueue = .main, completion: @escaping (Bool) -> Void) {
-        requestAuthorization(options: [.badge, .sound, .alert]) { (allowed, _)  in
+    func requestAuthorization(queue: DispatchQueue = .main, includesProvisionalAuth: Bool, completion: @escaping (Bool) -> Void) {
+        let options: UNAuthorizationOptions = includesProvisionalAuth ? [.badge, .sound, .alert, .provisional]: [.badge, .sound, .alert]
+        requestAuthorization(options: options) { (allowed, _)  in
             queue.async {
                 completion(allowed)
             }
         }
+    }
+
+    func removeAllNotifications() {
+        removeAllDeliveredNotifications()
+        removeAllPendingNotificationRequests()
     }
 }

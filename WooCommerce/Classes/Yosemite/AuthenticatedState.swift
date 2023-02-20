@@ -3,8 +3,6 @@ import Yosemite
 import Networking
 import Storage
 
-
-
 // MARK: - AuthenticatedState
 //
 class AuthenticatedState: StoresManagerState {
@@ -21,6 +19,9 @@ class AuthenticatedState: StoresManagerState {
     ///
     private var errorObserverToken: NSObjectProtocol?
 
+    /// For tracking events from Networking layer
+    ///
+    private let trackEventRequestNotificationHandler: TrackEventRequestNotificationHandler
 
     /// Designated Initializer
     ///
@@ -28,19 +29,31 @@ class AuthenticatedState: StoresManagerState {
         let storageManager = ServiceLocator.storageManager
         let network = AlamofireNetwork(credentials: credentials)
 
-        services = [
-            AccountStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
-            AppSettingsStore(dispatcher: dispatcher, storageManager: storageManager, fileStorage: PListFileStorage()),
-            AvailabilityStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+        var services: [ActionsProcessor] = [
+            AppSettingsStore(dispatcher: dispatcher,
+                             storageManager: storageManager,
+                             fileStorage: PListFileStorage(),
+                             generalAppSettings: ServiceLocator.generalAppSettings),
+            AddOnGroupStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             CommentStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            CouponStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            CustomerStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            DataStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            DomainStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            InAppPurchaseStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            InboxNotesStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            JustInTimeMessageStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             MediaStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             NotificationStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             NotificationCountStore(dispatcher: dispatcher, storageManager: storageManager, fileStorage: PListFileStorage()),
+            OrderCardPresentPaymentEligibilityStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             OrderNoteStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             OrderStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             OrderStatusStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            PaymentStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             PaymentGatewayStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ProductAttributeStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            ProductAttributeTermStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ProductReviewStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ProductCategoryStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ProductShippingClassStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
@@ -51,10 +64,46 @@ class AuthenticatedState: StoresManagerState {
             SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ShipmentStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             ShippingLabelStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            SitePluginStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
             SitePostStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            SiteStore(dotcomClientID: ApiCredentials.dotcomAppId,
+                      dotcomClientSecret: ApiCredentials.dotcomSecret,
+                      dispatcher: dispatcher,
+                      storageManager: storageManager,
+                      network: network),
             StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network),
-            TaxClassStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+            SystemStatusStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            TaxClassStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            TelemetryStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            UserStore(dispatcher: dispatcher, storageManager: storageManager, network: network),
+            CardPresentPaymentStore(dispatcher: dispatcher,
+                                    storageManager: storageManager,
+                                    network: network,
+                                    cardReaderService: ServiceLocator.cardReaderService,
+                                    cardReaderConfigProvider: ServiceLocator.cardReaderConfigProvider),
+            ReceiptStore(dispatcher: dispatcher,
+                         storageManager: storageManager,
+                         network: network,
+                         receiptPrinterService: ServiceLocator.receiptPrinterService,
+                         fileStorage: PListFileStorage()),
+            AnnouncementsStore(dispatcher: dispatcher,
+                               storageManager: storageManager,
+                               network: network,
+                               fileStorage: PListFileStorage()),
+            JetpackConnectionStore(dispatcher: dispatcher),
+            WordPressSiteStore(network: network, dispatcher: dispatcher)
         ]
+
+
+        if case let .wpcom(_, authToken, _) = credentials {
+            services.append(AccountStore(dispatcher: dispatcher, storageManager: storageManager, network: network, dotcomAuthToken: authToken))
+        } else {
+            DDLogInfo("No WordPress.com auth token found. AccountStore is not initialized.")
+        }
+
+        self.services = services
+
+        trackEventRequestNotificationHandler = TrackEventRequestNotificationHandler()
 
         startListeningToNotifications()
     }
@@ -117,8 +166,12 @@ private extension AuthenticatedState {
 private extension AuthenticatedState {
     func resetServices() {
         let resetStoredProviders = AppSettingsAction.resetStoredProviders(onCompletion: nil)
-        let resetStoredStatsVersionStates = AppSettingsAction.resetStatsVersionStates
-        let resetFeatureSwitchStates = AppSettingsAction.resetFeatureSwitches
-        ServiceLocator.stores.dispatch([resetStoredProviders, resetStoredStatsVersionStates, resetFeatureSwitchStates])
+        let resetOrdersSettings = AppSettingsAction.resetOrdersSettings
+        let resetProductsSettings = AppSettingsAction.resetProductsSettings
+        let resetGeneralStoreSettings = AppSettingsAction.resetGeneralStoreSettings
+        ServiceLocator.stores.dispatch([resetStoredProviders,
+                                        resetOrdersSettings,
+                                        resetProductsSettings,
+                                        resetGeneralStoreSettings])
     }
 }

@@ -3,15 +3,32 @@ import Gridicons
 import Contacts
 import Yosemite
 import SafariServices
-
+import MessageUI
+import Combine
+import SwiftUI
+import WooFoundation
+import Experiments
 
 // MARK: - OrderDetailsViewController: Displays the details for a given Order.
 //
 final class OrderDetailsViewController: UIViewController {
 
+    /// Main Stack View, that contains all the other views of the screen
+    ///
+    @IBOutlet private weak var stackView: UIStackView!
+
     /// Main TableView.
     ///
     @IBOutlet private weak var tableView: UITableView!
+
+    /// The top loader view, that will be embedded inside the stackview, on top of the tableview, while the screen is loading its
+    /// content for the first time.
+    ///
+    private var topLoaderView: TopLoaderView = {
+        let loaderView: TopLoaderView = TopLoaderView.instantiateFromNib()
+        loaderView.setBody(Localization.Generic.topLoaderBannerDescription)
+        return loaderView
+    }()
 
     /// Pull To Refresh Support.
     ///
@@ -33,27 +50,24 @@ final class OrderDetailsViewController: UIViewController {
 
     /// Order to be rendered!
     ///
-    var viewModel: OrderDetailsViewModel! {
-        didSet {
-            reloadTableViewSectionsAndData()
-        }
-    }
+    private let viewModel: OrderDetailsViewModel
 
     private let notices = OrderDetailsNotices()
 
     // MARK: - View Lifecycle
+    init(viewModel: OrderDetailsViewModel) {
+        self.viewModel = viewModel
+        super.init(nibName: Self.nibName, bundle: nil)
+    }
 
-    /// Create an instance of `Self` from its corresponding storyboard.
-    ///
-    static func instantiatedViewControllerFromStoryboard() -> Self? {
-        let storyboard = UIStoryboard.orders
-        let identifier = "OrderDetailsViewController"
-        return storyboard.instantiateViewController(withIdentifier: identifier) as? Self
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureNavigation()
+        configureNavigationBar()
+        configureTopLoaderView()
         configureTableView()
         registerTableViewCells()
         registerTableViewHeaderFooters()
@@ -67,14 +81,17 @@ final class OrderDetailsViewController: UIViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        syncNotes()
-        syncProducts()
-        syncProductVariations()
-        syncRefunds()
-        if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.shippingLabelsRelease1) {
-            syncShippingLabels()
+        let waitingTracker = WaitingTimeTracker(trackScenario: .orderDetails)
+        syncEverything { [weak self] in
+            waitingTracker.end()
+
+            self?.topLoaderView.isHidden = true
+
+            /// We add the refresh control to the tableview just after the `topLoaderView` disappear for the first time.
+            if self?.tableView.refreshControl == nil {
+                self?.tableView.refreshControl = self?.refreshControl
+            }
         }
-        syncTrackingsHidingAddButtonIfNecessary()
     }
 
     override func viewDidLayoutSubviews() {
@@ -82,21 +99,22 @@ final class OrderDetailsViewController: UIViewController {
         tableView.updateHeaderHeight()
     }
 
-    private func syncTrackingsHidingAddButtonIfNecessary() {
-        syncTracking { [weak self] error in
-            if error == nil {
-                self?.viewModel.trackingIsReachable = true
-            }
-
-            self?.reloadTableViewSectionsAndData()
+    override var shouldShowOfflineBanner: Bool {
+        if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.splitViewInOrdersTab) {
+            return false
         }
+        return true
     }
 }
-
 
 // MARK: - TableView Configuration
 //
 private extension OrderDetailsViewController {
+
+    /// Setup: TopLoaderView
+    func configureTopLoaderView() {
+        stackView.insertArrangedSubview(topLoaderView, at: 0)
+    }
 
     /// Setup: TableView
     ///
@@ -106,19 +124,25 @@ private extension OrderDetailsViewController {
         tableView.estimatedSectionHeaderHeight = Constants.sectionHeight
         tableView.estimatedRowHeight = Constants.rowHeight
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.refreshControl = refreshControl
 
         tableView.dataSource = viewModel.dataSource
+        tableView.accessibilityIdentifier = "order-details-table-view"
     }
 
     /// Setup: Navigation
     ///
-    func configureNavigation() {
+    func configureNavigationBar() {
+        // Title
         let titleFormat = NSLocalizedString("Order #%1$@", comment: "Order number title. Parameters: %1$@ - order number")
         title = String.localizedStringWithFormat(titleFormat, viewModel.order.number)
 
-        // Don't show the Order details title in the next-view's back button
-        navigationItem.backBarButtonItem = UIBarButtonItem(title: String(), style: .plain, target: nil, action: nil)
+        let editButton = UIBarButtonItem(title: Localization.NavBar.editOrder,
+                                         style: .plain,
+                                         target: self,
+                                         action: #selector(editOrder))
+        editButton.accessibilityIdentifier = "order-details-edit-button"
+        editButton.isEnabled = viewModel.editButtonIsEnabled
+        navigationItem.rightBarButtonItem = editButton
     }
 
     /// Setup: EntityListener
@@ -128,7 +152,7 @@ private extension OrderDetailsViewController {
             guard let self = self else {
                 return
             }
-            self.viewModel.updateOrderStatus(order: order)
+            self.viewModel.update(order: order)
             self.reloadTableViewSectionsAndData()
         }
     }
@@ -149,6 +173,10 @@ private extension OrderDetailsViewController {
         viewModel.onShippingLabelMoreMenuTapped = { [weak self] shippingLabel, sourceView in
             self?.shippingLabelMoreMenuTapped(shippingLabel: shippingLabel, sourceView: sourceView)
         }
+
+        viewModel.onProductsMoreMenuTapped = { [weak self] sourceView in
+            self?.productsMoreMenuTapped(sourceView: sourceView)
+        }
     }
 
     /// Reloads the tableView's data, assuming the view has been loaded.
@@ -166,6 +194,7 @@ private extension OrderDetailsViewController {
     /// Reloads the tableView's sections and data.
     ///
     func reloadTableViewSectionsAndData() {
+        configureNavigationBar()
         reloadSections()
         reloadTableViewDataIfPossible()
     }
@@ -211,7 +240,8 @@ private extension OrderDetailsViewController {
 //
 private extension OrderDetailsViewController {
     func updateTopBannerView() {
-        let factory = ShippingLabelsTopBannerFactory(shippingLabels: viewModel.dataSource.shippingLabels)
+        let factory = ShippingLabelsTopBannerFactory(shouldShowShippingLabelCreation: viewModel.dataSource.shouldShowShippingLabelCreation,
+                                                     shippingLabels: viewModel.dataSource.shippingLabels)
         let isExpanded = topBannerView?.isExpanded ?? false
         factory.createTopBannerIfNeeded(isExpanded: isExpanded,
                                         expandedStateChangeHandler: { [weak self] in
@@ -239,7 +269,7 @@ private extension OrderDetailsViewController {
         // top banner view can be Auto Layout based with dynamic height.
         let headerContainer = UIView(frame: CGRect(x: 0, y: 0, width: Int(tableView.frame.width), height: Int(Constants.headerDefaultHeight)))
         headerContainer.addSubview(topBannerView)
-        headerContainer.pinSubviewToSafeArea(topBannerView, insets: Constants.headerContainerInsets)
+        headerContainer.pinSubviewToAllEdges(topBannerView, insets: Constants.headerContainerInsets)
         tableView.tableHeaderView = headerContainer
         tableView.updateHeaderHeight()
     }
@@ -256,7 +286,7 @@ private extension OrderDetailsViewController {
     }
 
     func presentShippingLabelsFeedbackSurvey() {
-        let navigationController = SurveyCoordinatingController(survey: .shippingLabelsRelease1Feedback)
+        let navigationController = SurveyCoordinatingController(survey: .shippingLabelsRelease3Feedback)
         present(navigationController, animated: true, completion: nil)
     }
 
@@ -267,51 +297,29 @@ private extension OrderDetailsViewController {
 
 // MARK: - Action Handlers
 //
-extension OrderDetailsViewController {
+private extension OrderDetailsViewController {
 
     @objc func pullToRefresh() {
         ServiceLocator.analytics.track(.orderDetailPulledToRefresh)
-        let group = DispatchGroup()
-
-        group.enter()
-        syncOrder { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncProducts { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncProductVariations { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncRefunds() { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncShippingLabels() { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncNotes { _ in
-            group.leave()
-        }
-
-        group.enter()
-        syncTracking { _ in
-            group.leave()
-        }
-
-        group.notify(queue: .main) { [weak self] in
+        refreshControl.beginRefreshing()
+        syncEverything { [weak self] in
             NotificationCenter.default.post(name: .ordersBadgeReloadRequired, object: nil)
             self?.refreshControl.endRefreshing()
         }
+    }
+
+    /// Presents the order edit form
+    ///
+    @objc private func editOrder() {
+        let viewModel = EditableOrderViewModel(siteID: viewModel.order.siteID, flow: .editing(initialOrder: viewModel.order))
+        let viewController = OrderFormHostingController(viewModel: viewModel)
+        let navController = UINavigationController(rootViewController: viewController)
+        present(navController, animated: true)
+
+        let hasMultipleShippingLines = self.viewModel.order.shippingLines.count > 1
+        let hasMultipleFeeLines = self.viewModel.order.fees.count > 1
+        ServiceLocator.analytics.track(event: WooAnalyticsEvent.Orders.orderEditButtonTapped(hasMultipleShippingLines: hasMultipleShippingLines,
+                                                                                             hasMultipleFeeLines: hasMultipleFeeLines))
     }
 }
 
@@ -319,41 +327,13 @@ extension OrderDetailsViewController {
 // MARK: - Sync'ing Helpers
 //
 private extension OrderDetailsViewController {
-    func syncOrder(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncOrder { [weak self] (order, error) in
-            guard let self = self, let order = order else {
-                onCompletion?(error)
-                return
-            }
 
-            self.viewModel.update(order: order)
-
-            onCompletion?(nil)
-        }
-    }
-
-    func syncTracking(onCompletion: ((Error?) -> Void)? = nil) {
-        viewModel.syncTracking(onCompletion: onCompletion)
-    }
-
-    func syncNotes(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncNotes(onCompletion: onCompletion)
-    }
-
-    func syncProducts(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncProducts(onCompletion: onCompletion)
-    }
-
-    func syncProductVariations(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncProductVariations(onCompletion: onCompletion)
-    }
-
-    func syncRefunds(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncRefunds(onCompletion: onCompletion)
-    }
-
-    func syncShippingLabels(onCompletion: ((Error?) -> ())? = nil) {
-        viewModel.syncShippingLabels(onCompletion: onCompletion)
+    /// Syncs all data related to the current order.
+    ///
+    func syncEverything(onCompletion: (() -> ())? = nil) {
+        viewModel.syncEverything(onReloadSections: { [weak self] in
+            self?.reloadTableViewSectionsAndData()
+        }, onCompletion: onCompletion)
     }
 
     func deleteTracking(_ tracking: ShipmentTracking) {
@@ -369,15 +349,14 @@ private extension OrderDetailsViewController {
     }
 }
 
-
 // MARK: - Actions
 //
 private extension OrderDetailsViewController {
 
     func handleCellAction(_ type: OrderDetailsDataSource.CellActionType, at indexPath: IndexPath?) {
         switch type {
-        case .fulfill:
-            fulfillWasPressed()
+        case .markComplete:
+            markOrderCompleteWasPressed()
         case .summary:
             displayOrderStatusList()
         case .tracking:
@@ -387,22 +366,86 @@ private extension OrderDetailsViewController {
             trackingWasPressed(at: indexPath)
         case .issueRefund:
             issueRefundWasPressed()
+        case .collectPayment:
+            guard indexPath != nil else {
+                break
+            }
+            collectPaymentTapped()
         case .reprintShippingLabel(let shippingLabel):
             guard let navigationController = navigationController else {
                 assertionFailure("Cannot reprint a shipping label because `navigationController` is nil")
                 return
             }
-            let coordinator = ReprintShippingLabelCoordinator(shippingLabel: shippingLabel, sourceViewController: navigationController)
-            coordinator.showReprintUI()
+            let coordinator = PrintShippingLabelCoordinator(shippingLabels: [shippingLabel],
+                                                            printType: .reprint,
+                                                            sourceNavigationController: navigationController)
+            coordinator.showPrintUI()
+        case .createShippingLabel:
+            navigateToCreateShippingLabelForm()
         case .shippingLabelTrackingMenu(let shippingLabel, let sourceView):
             shippingLabelTrackingMoreMenuTapped(shippingLabel: shippingLabel, sourceView: sourceView)
+        case let .viewAddOns(addOns):
+            itemAddOnsButtonTapped(addOns: addOns)
+        case .editCustomerNote:
+            editCustomerNoteTapped()
+        case .editShippingAddress:
+            editShippingAddressTapped()
         }
     }
 
-    func fulfillWasPressed() {
-        ServiceLocator.analytics.track(.orderDetailFulfillButtonTapped)
-        let fulfillViewController = FulfillViewController(order: viewModel.order, products: viewModel.products)
-        navigationController?.pushViewController(fulfillViewController, animated: true)
+    func navigateToCreateShippingLabelForm() {
+        let shippingLabelFormVC = ShippingLabelFormViewController(order: viewModel.order)
+        shippingLabelFormVC.onLabelPurchase = { [weak self] isOrderComplete in
+            if isOrderComplete {
+                self?.markOrderCompleteFromShippingLabels()
+            }
+        }
+        shippingLabelFormVC.onLabelSave = { [weak self] in
+            guard let self = self, let navigationController = self.navigationController, navigationController.viewControllers.contains(self) else {
+                // Navigate back to order details when presented from push notification
+                if let orderLoaderVC = self?.parent as? OrderLoaderViewController {
+                    self?.navigationController?.popToViewController(orderLoaderVC, animated: true)
+                }
+                return
+            }
+
+            navigationController.popToViewController(self, animated: true)
+        }
+        shippingLabelFormVC.hidesBottomBarWhenPushed = true
+        navigationController?.show(shippingLabelFormVC, sender: self)
+    }
+
+    func markOrderCompleteWasPressed() {
+        ServiceLocator.analytics.track(.orderFulfillmentCompleteButtonTapped)
+        let reviewOrderViewModel = ReviewOrderViewModel(order: viewModel.order, products: viewModel.products, showAddOns: viewModel.dataSource.showAddOns)
+        let controller = ReviewOrderViewController(viewModel: reviewOrderViewModel) { [weak self] in
+            guard let self = self else { return }
+            let fulfillmentProcess = self.viewModel.markCompleted(flow: .editing)
+            let presenter = OrderFulfillmentNoticePresenter()
+            presenter.present(process: fulfillmentProcess)
+        }
+        navigationController?.pushViewController(controller, animated: true)
+    }
+
+    func markOrderCompleteFromShippingLabels() {
+        let fulfillmentProcess = self.viewModel.markCompleted(flow: .editing)
+
+        var cancellables = Set<AnyCancellable>()
+        var cancellable: AnyCancellable = AnyCancellable { }
+        cancellable = fulfillmentProcess.result.sink { completion in
+            if case .failure(_) = completion {
+                ServiceLocator.analytics.track(.shippingLabelOrderFulfillFailed)
+            }
+            else {
+                ServiceLocator.analytics.track(.shippingLabelOrderFulfillSucceeded)
+            }
+            cancellables.remove(cancellable)
+        } receiveValue: {
+            // Noop. There is no value to receive or act on.
+        }
+
+        // Insert in `cancellables` to keep the `sink` handler active.
+        cancellables.insert(cancellable)
     }
 
     func trackingWasPressed(at indexPath: IndexPath) {
@@ -429,8 +472,22 @@ private extension OrderDetailsViewController {
     }
 
     func displayWebView(url: URL) {
-        let safariViewController = SFSafariViewController(url: url)
-        present(safariViewController, animated: true, completion: nil)
+        WebviewHelper.launch(url, with: self)
+    }
+
+    func productsMoreMenuTapped(sourceView: UIView) {
+        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        actionSheet.view.tintColor = .text
+
+        actionSheet.addCancelActionWithTitle(Localization.ProductsMoreMenu.cancelAction)
+        actionSheet.addDefaultActionWithTitle(Localization.ProductsMoreMenu.createShippingLabelAction) { [weak self] _ in
+            self?.navigateToCreateShippingLabelForm()
+        }
+
+        let popoverController = actionSheet.popoverPresentationController
+        popoverController?.sourceView = sourceView
+
+        present(actionSheet, animated: true)
     }
 
     func shippingLabelMoreMenuTapped(shippingLabel: ShippingLabel, sourceView: UIView) {
@@ -446,6 +503,15 @@ private extension OrderDetailsViewController {
             // Disables the bottom bar (tab bar) when requesting a refund.
             refundViewController.hidesBottomBarWhenPushed = true
             self?.show(refundViewController, sender: self)
+        }
+
+        if let url = shippingLabel.commercialInvoiceURL, url.isNotEmpty {
+            actionSheet.addDefaultActionWithTitle(Localization.ShippingLabelMoreMenu.printCustomsFormAction) { [weak self] _ in
+                let printCustomsFormsView = PrintCustomsFormsView(invoiceURLs: [url])
+                let hostingController = UIHostingController(rootView: printCustomsFormsView)
+                hostingController.hidesBottomBarWhenPushed = true
+                self?.show(hostingController, sender: self)
+            }
         }
 
         let popoverController = actionSheet.popoverPresentationController
@@ -470,9 +536,7 @@ private extension OrderDetailsViewController {
             actionSheet.addDefaultActionWithTitle(Localization.ShippingLabelTrackingMoreMenu.trackShipmentAction) { [weak self] _ in
                 guard let self = self else { return }
                 ServiceLocator.analytics.track(event: .shipmentTrackingMenu(action: .track))
-                let safariViewController = SFSafariViewController(url: url)
-                safariViewController.modalPresentationStyle = .pageSheet
-                self.present(safariViewController, animated: true, completion: nil)
+                WebviewHelper.launch(url, with: self)
             }
         }
 
@@ -480,6 +544,40 @@ private extension OrderDetailsViewController {
         popoverController?.sourceView = sourceView
 
         present(actionSheet, animated: true)
+    }
+
+    func editCustomerNoteTapped() {
+        let editNoteViewController = EditCustomerNoteHostingController(viewModel: viewModel.editNoteViewModel)
+        present(editNoteViewController, animated: true)
+
+        ServiceLocator.analytics.track(event: WooAnalyticsEvent.OrderDetailsEdit.orderDetailEditFlowStarted(subject: .customerNote))
+    }
+
+    func editShippingAddressTapped() {
+        let viewModel = EditOrderAddressFormViewModel(order: viewModel.order, type: .shipping)
+        let editAddressViewController = EditOrderAddressHostingController(viewModel: viewModel)
+        let navigationController = WooNavigationController(rootViewController: editAddressViewController)
+        present(navigationController, animated: true, completion: nil)
+    }
+
+    @objc private func collectPaymentTapped() {
+        collectPayment()
+
+        // Track tapped event
+        ServiceLocator.analytics.track(event: WooAnalyticsEvent.Orders.collectPaymentTapped())
+    }
+
+    private func collectPayment() {
+        let paymentMethodsViewController = PaymentMethodsHostingController(viewModel: viewModel.paymentMethodsViewModel)
+        let paymentMethodsNavigationController = WooNavigationController(rootViewController: paymentMethodsViewController)
+        present(paymentMethodsNavigationController, animated: true)
+    }
+
+    private func itemAddOnsButtonTapped(addOns: [OrderItemAttribute]) {
+        let addOnsViewModel = OrderAddOnListI1ViewModel(attributes: addOns)
+        let addOnsController = OrderAddOnsListViewController(viewModel: addOnsViewModel)
+        let navigationController = WooNavigationController(rootViewController: addOnsController)
+        present(navigationController, animated: true, completion: nil)
     }
 }
 
@@ -547,20 +645,6 @@ extension OrderDetailsViewController: UITableViewDelegate {
     }
 }
 
-
-// MARK: - Segues
-//
-extension OrderDetailsViewController {
-
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
-        if let productListViewController = segue.destination as? ProductListViewController {
-            productListViewController.viewModel = viewModel
-            productListViewController.products = viewModel.products
-        }
-    }
-}
-
-
 // MARK: - Trackings alert
 // Track / delete tracking alert
 private extension OrderDetailsViewController {
@@ -602,16 +686,91 @@ private extension OrderDetailsViewController {
 }
 
 
-// MARK: - Present Order Status List
+// MARK: - Order Status List Child View
 //
 private extension OrderDetailsViewController {
     private func displayOrderStatusList() {
         ServiceLocator.analytics.track(.orderDetailOrderStatusEditButtonTapped,
                                        withProperties: ["status": viewModel.order.status.rawValue])
-        let statusList = OrderStatusListViewController(order: viewModel.order, currentStatus: viewModel.orderStatus)
-        let navigationController = UINavigationController(rootViewController: statusList)
+
+        let statusListViewModel = OrderStatusListViewModel(siteID: viewModel.order.siteID,
+                                                           status: viewModel.order.status)
+        let statusList = OrderStatusListViewController(viewModel: statusListViewModel)
+
+        statusListViewModel.didCancelSelection = { [weak statusList] in
+            statusList?.dismiss(animated: true, completion: nil)
+        }
+
+        statusListViewModel.didApplySelection = { [weak statusList] (selectedStatus) in
+            statusList?.dismiss(animated: true) {
+                self.setOrderStatus(to: selectedStatus)
+            }
+        }
+
+        let navigationController = WooNavigationController(rootViewController: statusList)
 
         present(navigationController, animated: true)
+    }
+
+    func setOrderStatus(to newStatus: OrderStatusEnum) {
+        let orderID = viewModel.order.orderID
+        let undoStatus = viewModel.order.status
+        let done = updateOrderStatusAction(siteID: viewModel.order.siteID, orderID: viewModel.order.orderID, status: newStatus)
+        let undo = updateOrderStatusAction(siteID: viewModel.order.siteID, orderID: viewModel.order.orderID, status: undoStatus)
+
+        ServiceLocator.stores.dispatch(done)
+        ServiceLocator.analytics.track(event: WooAnalyticsEvent.Orders.orderStatusChange(flow: .editing, orderID: orderID, from: undoStatus, to: newStatus))
+
+        displayOrderStatusUpdatedNotice {
+            ServiceLocator.stores.dispatch(undo)
+            ServiceLocator.analytics.track(event: WooAnalyticsEvent.Orders.orderStatusChange(flow: .editing, orderID: orderID, from: newStatus, to: undoStatus))
+        }
+    }
+
+    /// Returns an Order Update Action that will result in the specified Order Status updated accordingly.
+    ///
+    private func updateOrderStatusAction(siteID: Int64, orderID: Int64, status: OrderStatusEnum) -> Action {
+        return OrderAction.updateOrderStatus(siteID: siteID, orderID: orderID, status: status, onCompletion: { [weak self] error in
+            guard let error = error else {
+                NotificationCenter.default.post(name: .ordersBadgeReloadRequired, object: nil)
+                self?.viewModel.syncNotes()
+                ServiceLocator.analytics.track(.orderStatusChangeSuccess)
+                return
+            }
+
+            ServiceLocator.analytics.track(.orderStatusChangeFailed, withError: error)
+            DDLogError("⛔️ Order Update Failure: [\(orderID).status = \(status)]. Error: \(error)")
+
+            self?.displayOrderStatusErrorNotice(orderID: orderID, status: status)
+        })
+    }
+
+    /// Enqueues the `Order Updated` Notice. Whenever the `Undo` button gets pressed, we'll execute the `onUndoAction` closure.
+    ///
+    private func displayOrderStatusUpdatedNotice(onUndoAction: @escaping () -> Void) {
+        let message = NSLocalizedString("Order status updated", comment: "Order status update success notice")
+        let actionTitle = NSLocalizedString("Undo", comment: "Undo Action")
+        let notice = Notice(title: message, feedbackType: .success, actionTitle: actionTitle, actionHandler: onUndoAction)
+
+        ServiceLocator.noticePresenter.enqueue(notice: notice)
+    }
+
+    /// Enqueues the `Unable to Change Status of Order` Notice.
+    ///
+    private func displayOrderStatusErrorNotice(orderID: Int64, status: OrderStatusEnum) {
+        let titleFormat = NSLocalizedString(
+            "Unable to change status of order #%1$d",
+            comment: "Content of error presented when updating the status of an Order fails. "
+            + "It reads: Unable to change status of order #{order number}. "
+            + "Parameters: %1$d - order number"
+        )
+        let title = String.localizedStringWithFormat(titleFormat, orderID)
+        let actionTitle = NSLocalizedString("Retry", comment: "Retry Action")
+        let notice = Notice(title: title, message: nil, feedbackType: .error, actionTitle: actionTitle) { [weak self] in
+            self?.setOrderStatus(to: status)
+        }
+
+        ServiceLocator.noticePresenter.enqueue(notice: notice)
     }
 }
 
@@ -628,10 +787,29 @@ private extension OrderDetailsViewController {
     }
 
     enum Localization {
+        enum Generic {
+            static let topLoaderBannerDescription = NSLocalizedString("Loading content",
+                                                                      comment: "Text of the loading banner in Order Detail when loaded for the first time")
+        }
+
+        enum NavBar {
+            static let editOrder = NSLocalizedString("Edit", comment: "Button to edit an order on Order Details screen")
+        }
+
+        enum ProductsMoreMenu {
+            static let cancelAction = NSLocalizedString("Cancel", comment: "Cancel the more menu action sheet on Products section")
+            static let createShippingLabelAction = NSLocalizedString("Create Shipping Label",
+                                                                     comment: "Option to create new shipping label from the action " +
+                                                                     "sheet on Products section of Order Details screen")
+        }
+
         enum ShippingLabelMoreMenu {
             static let cancelAction = NSLocalizedString("Cancel", comment: "Cancel the shipping label more menu action sheet")
             static let requestRefundAction = NSLocalizedString("Request a Refund",
                                                                comment: "Request a refund on a shipping label from the shipping label more menu action sheet")
+            static let printCustomsFormAction = NSLocalizedString("Print Customs Form",
+                                                                  comment: "Print the customs form for the shipping label" +
+                                                                    " from the shipping label more menu action sheet")
         }
 
         enum ShippingLabelTrackingMoreMenu {
@@ -643,6 +821,11 @@ private extension OrderDetailsViewController {
                 NSLocalizedString("Track shipment",
                                   comment: "Track shipment of a shipping label from the shipping label tracking more menu action sheet")
         }
+
+        enum ActionsMenu {
+            static let accessibilityLabel = NSLocalizedString("Order actions", comment: "Accessibility label for button triggering more actions menu sheet.")
+            static let cancelAction = NSLocalizedString("Cancel", comment: "Cancel the main more actions menu sheet.")
+        }
     }
 
     enum Constants {
@@ -651,4 +834,8 @@ private extension OrderDetailsViewController {
         static let rowHeight = CGFloat(38)
         static let sectionHeight = CGFloat(44)
     }
+
+    /// Mailing a receipt failed but the SDK didn't return a more specific error
+    ///
+    struct UnknownEmailError: Error {}
 }

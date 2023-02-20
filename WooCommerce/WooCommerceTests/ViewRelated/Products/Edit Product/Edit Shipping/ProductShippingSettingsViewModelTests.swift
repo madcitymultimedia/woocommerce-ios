@@ -7,18 +7,20 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
 
     // MARK: - Initialization
 
-    func test_readonly_shipping_values_are_as_expected_after_initialization() {
+    func test_readonly_shipping_values_are_as_expected_based_on_locale_after_initialization() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
                   shippingClassID: 2)
         let model = EditableProductModel(product: product)
+        let shippingValueLocalizer = DefaultShippingValueLocalizer(deviceLocale: Locale(identifier: "it_IT"))
 
         // Act
-        let viewModel = ProductShippingSettingsViewModel(product: model)
+        let viewModel = ProductShippingSettingsViewModel(product: model,
+                                                         shippingValueLocalizer: shippingValueLocalizer)
 
         // Assert
         let expectedSections: [Section] = [
@@ -27,10 +29,10 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
         ]
         XCTAssertEqual(viewModel.sections, expectedSections)
         XCTAssertEqual(viewModel.product as? EditableProductModel, model)
-        XCTAssertEqual(viewModel.weight, "1.6")
-        XCTAssertEqual(viewModel.length, dimensions.length)
-        XCTAssertEqual(viewModel.width, dimensions.width)
-        XCTAssertEqual(viewModel.height, dimensions.height)
+        XCTAssertEqual(viewModel.localizedWeight, "1,6")
+        XCTAssertEqual(viewModel.localizedLength, "2,9")
+        XCTAssertEqual(viewModel.localizedWidth, "")
+        XCTAssertEqual(viewModel.localizedHeight, "1116")
         XCTAssertNil(viewModel.shippingClass)
     }
 
@@ -39,7 +41,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_shipping_values_remain_the_same_after_completing_update_before_shipping_class_API_sync() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
@@ -64,7 +66,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_shipping_values_remain_the_same_after_completing_update_following_shipping_class_API_sync_with_a_different_slug() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
@@ -91,7 +93,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_shipping_values_are_updated_after_completing_update() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
@@ -123,7 +125,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_shipping_class_API_sync_with_a_different_slug_has_no_unsaved_changes() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
@@ -143,7 +145,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_updating_with_the_same_values_has_no_unsaved_changes() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",
@@ -168,7 +170,7 @@ final class ProductShippingSettingsViewModelTests: XCTestCase {
     func test_updating_with_different_values_has_unsaved_changes() {
         // Arrange
         let dimensions = ProductDimensions(length: "2.9", width: "", height: "1116")
-        let product = MockProduct().product()
+        let product = Product.fake()
             .copy(weight: "1.6",
                   dimensions: dimensions,
                   shippingClass: "60-day",

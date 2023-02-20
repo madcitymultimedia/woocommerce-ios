@@ -16,7 +16,7 @@ final class OrdersRemoteTests: XCTestCase {
 
     /// Dummy Order ID
     ///
-    let sampleOrderID: Int64 = 1467
+    let sampleOrderID: Int64 = 963
 
     /// Dummy author string
     ///
@@ -34,6 +34,16 @@ final class OrdersRemoteTests: XCTestCase {
     ///
     override func setUp() {
         network.removeAllSimulatedResponses()
+    }
+
+    /// Verifies that the parameter `_fields` in single order and order list requests do not contain whitespace.
+    ///
+    func test_order_fields_parameter_values_do_not_contain_whitespace() throws {
+        // When
+        let fieldValues = OrdersRemote.ParameterValues.fieldValues
+
+        // Then
+        XCTAssertFalse(fieldValues.contains(" "))
     }
 
     // MARK: - Load All Orders Tests
@@ -62,7 +72,7 @@ final class OrdersRemoteTests: XCTestCase {
 
     /// Verifies that loadAllOrders properly relays Networking Layer errors.
     ///
-    func testLoadAllOrdersProperlyRelaysNetwokingErrors() throws {
+    func testLoadAllOrdersProperlyRelaysNetworkingErrors() throws {
         // Given
         let remote = OrdersRemote(network: network)
 
@@ -98,9 +108,29 @@ final class OrdersRemoteTests: XCTestCase {
         wait(for: [expectation], timeout: Constants.expectationTimeout)
     }
 
+    func test_load_single_order_properly_returns_WC6_6_new_fields() {
+        // Given
+        let remote = OrdersRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "orders/\(sampleOrderID)", filename: "order")
+
+        // When
+        let order: Order = waitFor { promise in
+            remote.loadOrder(for: self.sampleSiteID, orderID: self.sampleOrderID) { order, error in
+                if let order = order {
+                    promise(order)
+                }
+            }
+        }
+
+        // Then
+        XCTAssertTrue(order.isEditable)
+        XCTAssertTrue(order.needsPayment)
+        XCTAssertTrue(order.needsProcessing)
+    }
+
     /// Verifies that loadOrder properly relays any Networking Layer errors.
     ///
-    func testLoadSingleOrderProperlyRelaysNetwokingErrors() {
+    func testLoadSingleOrderProperlyRelaysNetworkingErrors() {
         let remote = OrdersRemote(network: network)
         let expectation = self.expectation(description: "Update Order")
 
@@ -111,6 +141,21 @@ final class OrdersRemoteTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: Constants.expectationTimeout)
+    }
+
+    /// Verifies that loadOrder fetches metadata
+    ///
+    func testLoadSingleOrderFetchesMetaData() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+
+        // When
+        remote.loadOrder(for: sampleSiteID, orderID: sampleOrderID) { _, _ in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["_fields"] as? String)
+        XCTAssertTrue(received.contains("meta_data"))
     }
 
 
@@ -136,7 +181,7 @@ final class OrdersRemoteTests: XCTestCase {
 
     /// Verifies that searchOrders properly relays Networking Layer errors.
     ///
-    func testSearchOrdersProperlyRelaysNetwokingErrors() {
+    func testSearchOrdersProperlyRelaysNetworkingErrors() {
         let remote = OrdersRemote(network: network)
         let expectation = self.expectation(description: "Load All Orders")
 
@@ -171,7 +216,7 @@ final class OrdersRemoteTests: XCTestCase {
 
     /// Verifies that updateOrder properly relays any Networking Layer errors.
     ///
-    func testUpdateOrderProperlyRelaysNetwokingErrors() {
+    func testUpdateOrderProperlyRelaysNetworkingErrors() {
         let remote = OrdersRemote(network: network)
         let expectation = self.expectation(description: "Update Order")
 
@@ -182,6 +227,88 @@ final class OrdersRemoteTests: XCTestCase {
         }
 
         wait(for: [expectation], timeout: Constants.expectationTimeout)
+    }
+
+    func test_update_order_properly_encodes_shipping_lines_for_removal_from_order() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let shipping = ShippingLine(shippingID: 333, methodTitle: "Shipping", methodID: nil, total: "1.23", totalTax: "", taxes: [])
+        let order = Order.fake().copy(shippingLines: [shipping])
+
+        // When
+        remote.updateOrder(from: 123, order: order, fields: [.shippingLines]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["shipping_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": shipping.shippingID,
+            "method_title": shipping.methodTitle,
+            "method_id": NSNull(),
+            "total": shipping.total
+        ]
+        assertEqual(received, expected)
+    }
+
+    func test_update_order_properly_encodes_fee_lines_for_removal_from_order() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let fee = OrderFeeLine(feeID: 333, name: nil, taxClass: "", taxStatus: .none, total: "12.34", totalTax: "", taxes: [], attributes: [])
+        let order = Order.fake().copy(fees: [fee])
+
+        // When
+        remote.updateOrder(from: 123, order: order, fields: [.fees]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["fee_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": fee.feeID,
+            "name": NSNull(),
+            "tax_status": fee.taxStatus.rawValue,
+            "tax_class": fee.taxClass,
+            "total": fee.total
+        ]
+        assertEqual(expected, received)
+    }
+
+    func test_update_order_properly_encodes_custom_status() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let expectedStatusString = "backorder"
+        let status = OrderStatusEnum.custom(expectedStatusString)
+        let order = Order.fake().copy(orderID: sampleOrderID, status: status)
+
+        // When
+        remote.updateOrder(from: sampleSiteID, order: order, fields: [.status]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["status"] as? String)
+        assertEqual(received, expectedStatusString)
+    }
+
+    func test_update_order_properly_encodes_order_items() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let expectedQuantity: Int64 = 2
+        let orderItem = OrderItem.fake().copy(itemID: 123, productID: 5, quantity: Decimal(expectedQuantity), subtotal: "3", total: "15")
+        let order = Order.fake().copy(items: [orderItem])
+
+        // When
+        remote.updateOrder(from: sampleSiteID, order: order, fields: [.items]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["line_items"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": orderItem.itemID,
+            "product_id": orderItem.productID,
+            "quantity": expectedQuantity,
+            "subtotal": orderItem.subtotal,
+            "total": orderItem.total
+        ]
+        assertEqual(received, expected)
     }
 
 
@@ -207,7 +334,7 @@ final class OrdersRemoteTests: XCTestCase {
 
     /// Verifies that loadOrderNotes properly relays any Networking Layer errors.
     ///
-    func testLoadOrderNotesProperlyRelaysNetwokingErrors() {
+    func testLoadOrderNotesProperlyRelaysNetworkingErrors() {
         let remote = OrdersRemote(network: network)
         let expectation = self.expectation(description: "Load Order Notes")
 
@@ -237,48 +364,218 @@ final class OrdersRemoteTests: XCTestCase {
         wait(for: [expectation], timeout: Constants.expectationTimeout)
     }
 
+    // MARK: - Create Order Tests
 
-    // MARK: - Count Orders Tests
-
-    /// Verifies that countOrders properly parses response.
-    ///
-    func testCountOrdersProperlyReturnsParsedOrderCount() {
+    func test_create_order_properly_encodes_fee_lines() throws {
+        // Given
         let remote = OrdersRemote(network: network)
-        let expectation = self.expectation(description: "Count Orders")
+        let fee = OrderFeeLine(feeID: 333, name: "Line", taxClass: "", taxStatus: .none, total: "12.34", totalTax: "", taxes: [], attributes: [])
+        let order = Order.fake().copy(fees: [fee])
 
-        network.simulateResponse(requestUrlSuffix: "reports/orders/totals", filename: "orders-count")
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.feeLines]) { result in }
 
-        remote.countOrders(for: sampleSiteID,
-                           statusKey: "processing") { orderCount, error in
-                            XCTAssertNil(error)
-                            XCTAssertNotNil(orderCount)
-
-                            // Take the opportunity to test the custom subscript works
-                            let numberOfProcessingOrders = orderCount!["processing"]?.total
-
-                            XCTAssertEqual(numberOfProcessingOrders, 6)
-
-                            expectation.fulfill()
-
-        }
-
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["fee_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": fee.feeID,
+            "name": fee.name ?? "",
+            "tax_status": fee.taxStatus.rawValue,
+            "tax_class": fee.taxClass,
+            "total": fee.total
+        ]
+        assertEqual(received, expected)
     }
 
-    /// Verifies that countOrders properly relays Networking Layer errors.
-    ///
-    func testCountOrdersProperlyRelaysNetwokingErrors() {
+    func test_create_order_properly_encodes_status() throws {
+        // Given
         let remote = OrdersRemote(network: network)
-        let expectation = self.expectation(description: "Count Orders")
+        let status = OrderStatusEnum.onHold
+        let order = Order.fake().copy(status: status)
 
-        remote.countOrders(for: sampleSiteID,
-                           statusKey: "processing") { orderCount, error in
-                            XCTAssertNil(orderCount)
-                            XCTAssertNotNil(error)
-                            expectation.fulfill()
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.status]) { result in }
 
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["status"] as? String)
+        assertEqual(received, status.rawValue)
+    }
+
+    func test_create_order_properly_encodes_custom_status() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let expectedStatusString = "backorder"
+        let status = OrderStatusEnum.custom(expectedStatusString)
+        let order = Order.fake().copy(status: status)
+
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.status]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["status"] as? String)
+        assertEqual(received, expectedStatusString)
+    }
+
+    func test_create_order_properly_encodes_order_items() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let expectedQuantity: Int64 = 2
+        let orderItem = OrderItem.fake().copy(productID: 5, quantity: Decimal(expectedQuantity))
+        let order = Order.fake().copy(items: [orderItem])
+
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.items]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["line_items"] as? [[String: AnyHashable]]).first
+        let expected: [String: Int64] = [
+            "id": 0,
+            "product_id": orderItem.productID,
+            "quantity": expectedQuantity
+        ]
+        assertEqual(received, expected)
+    }
+
+    func test_create_order_properly_encodes_addresses() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let address1 = sampleAddress1
+        let address2 = sampleAddress2
+        let order = Order.fake().copy(billingAddress: address1, shippingAddress: address2)
+
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.billingAddress, .shippingAddress]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received1 = try XCTUnwrap(request.parameters["billing"] as? [String: AnyHashable])
+        let expected1: [String: AnyHashable] = [
+            "first_name": address1.firstName,
+            "last_name": address1.lastName,
+            "address_1": address1.address1,
+            "city": address1.city,
+            "state": address1.state,
+            "postcode": address1.postcode,
+            "country": address1.country,
+            "email": address1.email ?? "",
+            "phone": address1.phone ?? ""
+        ]
+        assertEqual(received1, expected1)
+
+        let received2 = try XCTUnwrap(request.parameters["shipping"] as? [String: AnyHashable])
+        let expected2: [String: AnyHashable] = [
+            "first_name": address2.firstName,
+            "last_name": address2.lastName,
+            "company": address2.company ?? "",
+            "address_1": address2.address1,
+            "city": address2.city,
+            "state": address2.state,
+            "postcode": address2.postcode,
+            "country": address2.country
+        ]
+        assertEqual(received2, expected2)
+    }
+
+    func test_create_order_properly_encodes_shipping_lines() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        let shipping = ShippingLine(shippingID: 333, methodTitle: "Shipping", methodID: "other", total: "1.23", totalTax: "", taxes: [])
+        let order = Order.fake().copy(shippingLines: [shipping])
+
+        // When
+        remote.createOrder(siteID: 123, order: order, fields: [.shippingLines]) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["shipping_lines"] as? [[String: AnyHashable]]).first
+        let expected: [String: AnyHashable] = [
+            "id": shipping.shippingID,
+            "method_title": shipping.methodTitle,
+            "method_id": shipping.methodID ?? "",
+            "total": shipping.total
+        ]
+        assertEqual(received, expected)
+    }
+
+    // MARK: - Delete order tests
+
+    func test_delete_order_properly_returns_parsed_order() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "orders/\(sampleOrderID)", filename: "order")
+
+        // When
+        let result: Result<Order, Error> = waitFor { promise in
+            remote.deleteOrder(for: self.sampleSiteID, orderID: self.sampleOrderID, force: false) { result in
+                promise(result)
+            }
         }
 
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let order = try XCTUnwrap(result.get())
+        XCTAssertEqual(order.orderID, sampleOrderID)
+    }
+
+    func test_delete_order_properly_relays_networking_errors() {
+        // Given
+        let remote = OrdersRemote(network: network)
+
+        // When
+        let result: Result<Order, Error> = waitFor { promise in
+            remote.deleteOrder(for: self.sampleSiteID, orderID: self.sampleOrderID, force: false) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        XCTAssertNotNil(result.failure)
+    }
+
+    func test_delete_order_includes_expected_force_parameter() throws {
+        // Given
+        let remote = OrdersRemote(network: network)
+
+        // When
+        remote.deleteOrder(for: sampleSiteID, orderID: sampleOrderID, force: true) { result in }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.last as? JetpackRequest)
+        let received = try XCTUnwrap(request.parameters["force"] as? String)
+        XCTAssertEqual(received, "true")
+    }
+}
+
+private extension OrdersRemoteTests {
+    var sampleAddress1: Address {
+        Address(firstName: "Johnny",
+                lastName: "Appleseed",
+                company: nil,
+                address1: "234 70th Street",
+                address2: nil,
+                city: "Niagara Falls",
+                state: "NY",
+                postcode: "14304",
+                country: "US",
+                phone: "333-333-3333",
+                email: "scrambled@scrambled.com")
+    }
+
+    var sampleAddress2: Address {
+        Address(firstName: "Skylar",
+                lastName: "Ferry",
+                company: "Automattic Inc.",
+                address1: "60 29th Street #343",
+                address2: nil,
+                city: "New York",
+                state: "NY",
+                postcode: "94121-2303",
+                country: "US",
+                phone: nil,
+                email: nil)
     }
 }

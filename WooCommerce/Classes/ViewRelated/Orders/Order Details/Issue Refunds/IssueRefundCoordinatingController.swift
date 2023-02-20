@@ -42,9 +42,9 @@ private extension IssueRefundCoordinatingController {
         let issueRefundViewController = IssueRefundViewController(order: order, refunds: refunds)
 
         // Select quantity action
-        issueRefundViewController.onSelectQuantityAction = { [weak self] command in
+        issueRefundViewController.onSelectQuantityAction = { [weak self, weak issueRefundViewController] command in
             self?.navigateToItemQuantitySelection(using: command) { selectedQuantity in
-                issueRefundViewController.updateRefundQuantity(quantity: selectedQuantity, forItemAtIndex: command.itemIndex)
+                issueRefundViewController?.updateRefundQuantity(quantity: selectedQuantity, forItemAtIndex: command.itemIndex)
             }
 
         }
@@ -76,10 +76,10 @@ private extension IssueRefundCoordinatingController {
         let refundConfirmationViewController = RefundConfirmationViewController(viewModel: viewModel)
 
         // Confirmation & submission action
-        refundConfirmationViewController.onRefundButtonAction = { [weak self] in
+        refundConfirmationViewController.onRefundButtonAction = { [weak self, weak refundConfirmationViewController] in
             self?.presetRefundConfirmationAlert(amount: viewModel.refundAmount) { didConfirm in
                 if didConfirm {
-                    refundConfirmationViewController.submitRefund()
+                    refundConfirmationViewController?.submitRefund()
                 }
             }
         }
@@ -134,12 +134,6 @@ private extension IssueRefundCoordinatingController {
         let viewProperties = InProgressViewProperties(title: Localization.issuingRefund, message: "")
         let inProgressViewController = InProgressViewController(viewProperties: viewProperties)
 
-        // Before iOS 13, a modal with transparent background requires certain
-        // `modalPresentationStyle` to prevent the view from turning dark after being presented.
-        if #available(iOS 13.0, *) {} else {
-            inProgressViewController.modalPresentationStyle = .overCurrentContext
-        }
-
         present(inProgressViewController, animated: true)
     }
 
@@ -164,7 +158,7 @@ private extension IssueRefundCoordinatingController {
 
 /// Conform to this protocol to allow custom behaviour on when to allow an interactive dismiss gesture.
 ///
-protocol IssueRefundInteractiveDismissDelegate: class {
+protocol IssueRefundInteractiveDismissDelegate: AnyObject {
     func presentationControllerShouldDismiss(_ presentationController: UIPresentationController) -> Bool
 }
 

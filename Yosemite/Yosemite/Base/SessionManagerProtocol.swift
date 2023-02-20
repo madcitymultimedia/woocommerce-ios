@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observables
 
 public protocol SessionManagerProtocol {
 
@@ -15,17 +15,29 @@ public protocol SessionManagerProtocol {
     ///
     var defaultSite: Site? { get set }
 
+    /// Publishes default site on change.
+    ///
+    var defaultSitePublisher: AnyPublisher<Site?, Never> { get }
+
     /// Default StoreID.
     ///
     var defaultStoreID: Int64? { get set }
 
+    /// URL of default store
+    ///
+    var defaultStoreURL: String? { get }
+
+    /// Roles for the default Store Site.
+    ///
+    var defaultRoles: [User.Role] { get set }
+
+    /// Publishes default store ID on change.
+    ///
+    var defaultStoreIDPublisher: AnyPublisher<Int64?, Never> { get }
+
     /// Anonymous UserID.
     ///
     var anonymousUserID: String? { get }
-
-    /// Observable site ID
-    ///
-    var siteID: Observable<Int64?> { get }
 
     /// Default Credentials.
     ///
@@ -34,4 +46,8 @@ public protocol SessionManagerProtocol {
     /// Nukes all of the known Session's properties.
     ///
     func reset()
+
+    /// Deletes application password
+    ///
+    func deleteApplicationPassword()
 }

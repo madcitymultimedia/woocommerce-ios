@@ -1,6 +1,7 @@
 import XCTest
 @testable import WooCommerce
 import Yosemite
+import WooFoundation
 
 /// CurrencySettings Tests
 ///
@@ -25,8 +26,8 @@ final class CurrencySettingsTests: XCTestCase {
         XCTAssertEqual(.USD, moneyFormat?.currencyCode)
         XCTAssertEqual(.left, moneyFormat?.currencyPosition)
         XCTAssertEqual(".", moneyFormat?.decimalSeparator)
-        XCTAssertEqual(2, moneyFormat?.numberOfDecimals)
-        XCTAssertEqual(",", moneyFormat?.thousandSeparator)
+        XCTAssertEqual(2, moneyFormat?.fractionDigits)
+        XCTAssertEqual(",", moneyFormat?.groupingSeparator)
     }
 
     func testInitWithIndividualParameters() {
@@ -39,8 +40,8 @@ final class CurrencySettingsTests: XCTestCase {
         XCTAssertEqual(.USD, moneyFormat?.currencyCode)
         XCTAssertEqual(.right, moneyFormat?.currencyPosition)
         XCTAssertEqual("X", moneyFormat?.decimalSeparator)
-        XCTAssertEqual(10, moneyFormat?.numberOfDecimals)
-        XCTAssertEqual("M", moneyFormat?.thousandSeparator)
+        XCTAssertEqual(10, moneyFormat?.fractionDigits)
+        XCTAssertEqual("M", moneyFormat?.groupingSeparator)
     }
 
     func testInitWithSiteSettingsEmptyArray() {
@@ -50,43 +51,43 @@ final class CurrencySettingsTests: XCTestCase {
         XCTAssertEqual(.USD, moneyFormat?.currencyCode)
         XCTAssertEqual(.left, moneyFormat?.currencyPosition)
         XCTAssertEqual(".", moneyFormat?.decimalSeparator)
-        XCTAssertEqual(2, moneyFormat?.numberOfDecimals)
-        XCTAssertEqual(",", moneyFormat?.thousandSeparator)
+        XCTAssertEqual(2, moneyFormat?.fractionDigits)
+        XCTAssertEqual(",", moneyFormat?.groupingSeparator)
     }
 
     func testInitWithSiteSettings() {
         let wooCurrencyCode = SiteSetting(siteID: 1,
                                           settingID: "woocommerce_currency",
                                           label: "",
-                                          description: "",
+                                          settingDescription: "",
                                           value: "SHP",
                                           settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let wooCurrencyPosition = SiteSetting(siteID: 1,
                                               settingID: "woocommerce_currency_pos",
                                               label: "",
-                                              description: "",
+                                              settingDescription: "",
                                               value: "right",
                                               settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let thousandsSeparator = SiteSetting(siteID: 1,
                                              settingID: "woocommerce_price_thousand_sep",
                                              label: "",
-                                             description: "",
+                                             settingDescription: "",
                                              value: "X",
                                              settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let decimalSeparator = SiteSetting(siteID: 1,
                                            settingID: "woocommerce_price_decimal_sep",
                                            label: "",
-                                           description: "",
+                                           settingDescription: "",
                                            value: "Y",
                                            settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let numberOfDecimals = SiteSetting(siteID: 1,
                                            settingID: "woocommerce_price_num_decimals",
                                            label: "",
-                                           description: "",
+                                           settingDescription: "",
                                            value: "3",
                                            settingGroupKey: SiteSettingGroup.general.rawValue)
 
@@ -101,36 +102,36 @@ final class CurrencySettingsTests: XCTestCase {
         XCTAssertEqual(.SHP, moneyFormat?.currencyCode)
         XCTAssertEqual(.right, moneyFormat?.currencyPosition)
         XCTAssertEqual("Y", moneyFormat?.decimalSeparator)
-        XCTAssertEqual(3, moneyFormat?.numberOfDecimals)
-        XCTAssertEqual("X", moneyFormat?.thousandSeparator)
+        XCTAssertEqual(3, moneyFormat?.fractionDigits)
+        XCTAssertEqual("X", moneyFormat?.groupingSeparator)
     }
 
     func testInitWithIncompleteSiteSettings() {
         let wooCurrencyCode = SiteSetting(siteID: 1,
                                           settingID: "woocommerce_currency",
                                           label: "",
-                                          description: "",
+                                          settingDescription: "",
                                           value: "SHP",
                                           settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let wooCurrencyPosition = SiteSetting(siteID: 1,
                                               settingID: "woocommerce_currency_pos",
                                               label: "",
-                                              description: "",
+                                              settingDescription: "",
                                               value: "right",
                                               settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let thousandsSeparator = SiteSetting(siteID: 1,
                                              settingID: "woocommerce_price_thousand_sep",
                                              label: "",
-                                             description: "",
+                                             settingDescription: "",
                                              value: "X",
                                              settingGroupKey: SiteSettingGroup.general.rawValue)
 
         let decimalSeparator = SiteSetting(siteID: 1,
                                            settingID: "woocommerce_price_decimal_sep",
                                            label: "",
-                                           description: "",
+                                           settingDescription: "",
                                            value: "Y",
                                            settingGroupKey: SiteSettingGroup.general.rawValue)
 
@@ -146,15 +147,15 @@ final class CurrencySettingsTests: XCTestCase {
         XCTAssertEqual(.SHP, moneyFormat?.currencyCode)
         XCTAssertEqual(.right, moneyFormat?.currencyPosition)
         XCTAssertEqual("Y", moneyFormat?.decimalSeparator)
-        XCTAssertEqual(2, moneyFormat?.numberOfDecimals)
-        XCTAssertEqual("X", moneyFormat?.thousandSeparator)
+        XCTAssertEqual(2, moneyFormat?.fractionDigits)
+        XCTAssertEqual("X", moneyFormat?.groupingSeparator)
     }
 
     /// Test currency symbol lookup returns correctly encoded symbol.
     ///
     func testCurrencySymbol() {
         moneyFormat = CurrencySettings()
-        let symbol = moneyFormat?.symbol(from: CurrencySettings.CurrencyCode.AED)
+        let symbol = moneyFormat?.symbol(from: CurrencyCode.AED)
         XCTAssertEqual("د.إ", symbol)
     }
 }

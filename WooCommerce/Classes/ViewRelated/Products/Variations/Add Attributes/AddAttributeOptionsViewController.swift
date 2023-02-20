@@ -1,11 +1,22 @@
 import UIKit
 import Yosemite
+import WordPressUI
 
-final class AddAttributeOptionsViewController: UIViewController {
+final class AddAttributeOptionsViewController: UIViewController, GhostableViewController {
 
     @IBOutlet weak private var tableView: UITableView!
 
+    lazy var ghostTableViewController = GhostTableViewController(options: GhostTableViewOptions(cellClass: WooBasicTableViewCell.self))
+
     private let viewModel: AddAttributeOptionsViewModel
+
+    private let noticePresenter: NoticePresenter
+
+    private let analytics: Analytics
+
+    /// Closure to be invoked(with the updated product) when the update/create/remove attribute operation finishes successfully.
+    ///
+    private let onCompletion: (Product) -> Void
 
     /// Keyboard management
     ///
@@ -13,10 +24,31 @@ final class AddAttributeOptionsViewController: UIViewController {
         self?.handleKeyboardFrameUpdate(keyboardFrame: keyboardFrame)
     }
 
-    /// Init
+    /// Empty state screen
     ///
-    init(viewModel: AddAttributeOptionsViewModel) {
+    private lazy var emptyStateViewController = EmptyStateViewController(style: .list)
+
+    /// Sync error state config for EmptyStateViewController
+    ///
+    private lazy var errorStateConfig: EmptyStateViewController.Config = {
+        let message = NSAttributedString(string: Localization.syncErrorMessage, attributes: [.font: EmptyStateViewController.Config.messageFont])
+        return .withButton(message: message, image: .errorImage, details: "", buttonTitle: Localization.retryAction) { [weak self] _ in
+            self?.viewModel.synchronizeOptions()
+        }
+    }()
+
+    /// Initializer for `AddAttributeOptionsViewController`
+    ///
+    /// - Parameters:
+    ///   - onCompletion: Closure to be invoked(with the updated product) when the update/create/remove attribute operation finishes successfully.
+    init(viewModel: AddAttributeOptionsViewModel,
+         noticePresenter: NoticePresenter = ServiceLocator.noticePresenter,
+         analytics: Analytics = ServiceLocator.analytics,
+         onCompletion: @escaping (Product) -> Void) {
         self.viewModel = viewModel
+        self.noticePresenter = noticePresenter
+        self.analytics = analytics
+        self.onCompletion = onCompletion
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -26,12 +58,13 @@ final class AddAttributeOptionsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        configureNavigationBar()
         configureMainView()
         configureTableView()
         registerTableViewHeaderSections()
         registerTableViewCells()
         startListeningToNotifications()
+        observeViewModel()
+        renderViewModel()
     }
 }
 
@@ -39,14 +72,33 @@ final class AddAttributeOptionsViewController: UIViewController {
 //
 private extension AddAttributeOptionsViewController {
 
-    func configureNavigationBar() {
-        title = viewModel.titleView
+    func configureRightButtonItem() {
+        // The update indicator has precedence over the next button
+        if viewModel.showUpdateIndicator {
+            return navigationItem.rightBarButtonItems = [createUpdateIndicatorButton()]
+        }
 
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: Localization.nextNavBarButton,
-                                                           style: .plain,
-                                                           target: self,
-                                                           action: #selector(doneButtonPressed))
-        removeNavigationBackBarButtonText()
+        // Assemble buttons based view model visibility
+        let moreButton = UIBarButtonItem(image: .moreImage, style: .plain, target: self, action: #selector(moreButtonPressed(_:)))
+        let buttons = [
+            createNextButton(enabled: viewModel.isNextButtonEnabled),
+            viewModel.showMoreButton ? moreButton : nil
+        ]
+
+        navigationItem.rightBarButtonItems = buttons.compactMap { $0 }
+    }
+
+    func createUpdateIndicatorButton() -> UIBarButtonItem {
+        let indicator = UIActivityIndicatorView(style: .medium)
+        indicator.color = .navigationBarLoadingIndicator
+        indicator.startAnimating()
+        return UIBarButtonItem(customView: indicator)
+    }
+
+    func createNextButton(enabled: Bool) -> UIBarButtonItem {
+        let button = UIBarButtonItem(title: Localization.nextNavBarButton, style: .plain, target: self, action: #selector(nextButtonPressed))
+        button.isEnabled = enabled
+        return button
     }
 
     func configureMainView() {
@@ -60,6 +112,8 @@ private extension AddAttributeOptionsViewController {
 
         tableView.dataSource = self
         tableView.delegate = self
+        tableView.isEditing = true
+        tableView.allowsSelectionDuringEditing = true
     }
 
     func registerTableViewHeaderSections() {
@@ -68,9 +122,56 @@ private extension AddAttributeOptionsViewController {
     }
 
     func registerTableViewCells() {
-        for row in Row.allCases {
-            tableView.registerNib(for: row.type)
+        tableView.registerNib(for: BasicTableViewCell.self)
+        tableView.registerNib(for: TextFieldTableViewCell.self)
+    }
+
+    func observeViewModel() {
+        viewModel.onChange = { [weak self] in
+            guard let self = self else { return }
+            self.renderViewModel()
         }
+    }
+
+    func renderViewModel() {
+        title = viewModel.getCurrentAttributeName
+        configureRightButtonItem()
+        tableView.reloadData()
+
+        if viewModel.showGhostTableView {
+            displayGhostContent()
+        } else {
+            removeGhostContent()
+        }
+
+        if viewModel.showSyncError {
+            displaySyncErrorViewController()
+        } else {
+            removeEmptyStateViewController()
+        }
+    }
+
+    /// Shows the EmptyStateViewController for options sync error state
+    ///
+    func displaySyncErrorViewController() {
+        addChild(emptyStateViewController)
+
+        emptyStateViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyStateViewController.view)
+
+        emptyStateViewController.view.pinSubviewToAllEdges(view)
+        emptyStateViewController.didMove(toParent: self)
+        emptyStateViewController.configure(errorStateConfig)
+    }
+
+    func removeEmptyStateViewController() {
+        guard emptyStateViewController.parent == self else {
+            return
+        }
+
+        emptyStateViewController.willMove(toParent: nil)
+        emptyStateViewController.view.removeFromSuperview()
+        emptyStateViewController.removeFromParent()
     }
 }
 
@@ -93,13 +194,45 @@ extension AddAttributeOptionsViewController: UITableViewDataSource {
 
         return cell
     }
+
+    func tableView(_ tableView: UITableView, editingStyleForRowAt indexPath: IndexPath) -> UITableViewCell.EditingStyle {
+        .none // Don't show the default red delete button
+    }
+
+    func tableView(_ tableView: UITableView, shouldIndentWhileEditingRowAt indexPath: IndexPath) -> Bool {
+        false // Don't indent content
+    }
+
+    func tableView(_ tableView: UITableView,
+                   targetIndexPathForMoveFromRowAt sourceIndexPath: IndexPath,
+                   toProposedIndexPath proposedDestinationIndexPath: IndexPath) -> IndexPath {
+        // Constraint reorder destination to sections that support it.
+        let proposedSection = viewModel.sections[proposedDestinationIndexPath.section]
+        guard proposedSection.allowsReorder else {
+            return sourceIndexPath
+        }
+        return proposedDestinationIndexPath
+    }
+
+    func tableView(_ tableView: UITableView, canMoveRowAt indexPath: IndexPath) -> Bool {
+        // Only allow reorder if the section allows it.
+        let section = viewModel.sections[indexPath.section]
+        return section.allowsReorder
+    }
+
+    func tableView(_ tableView: UITableView, moveRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        viewModel.reorderSelectedOptions(fromIndex: sourceIndexPath.row, toIndex: destinationIndexPath.row)
+    }
 }
 
 // MARK: - UITableViewDelegate Conformance
 //
 extension AddAttributeOptionsViewController: UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        tableView.deselectRow(at: indexPath, animated: true)
+        guard viewModel.sections[indexPath.section].allowsSelection else {
+            return
+        }
+        viewModel.selectExistingOption(atIndex: indexPath.row)
     }
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
@@ -138,15 +271,15 @@ private extension AddAttributeOptionsViewController {
     /// Cells currently configured in the order they appear on screen
     ///
     func configure(_ cell: UITableViewCell, for row: Row, at indexPath: IndexPath) {
-        switch cell {
-        case let cell as TextFieldTableViewCell where row == .termTextField:
+        switch (row, cell) {
+        case (.optionTextField, let cell as TextFieldTableViewCell):
             configureTextField(cell: cell)
-        case let cell as BasicTableViewCell where row == .selectedTerms:
-            configureOption(cell: cell)
-        case let cell as BasicTableViewCell where row == .existingTerms:
-            configureOption(cell: cell)
+        case (let .selectedOptions(name), let cell as BasicTableViewCell):
+            configureOptionOffered(cell: cell, text: name, index: indexPath.row)
+        case (let .existingOptions(name), let cell as BasicTableViewCell):
+            configureOptionAdded(cell: cell, text: name)
         default:
-            fatalError()
+            fatalError("Unsupported Cell")
             break
         }
     }
@@ -154,16 +287,37 @@ private extension AddAttributeOptionsViewController {
     func configureTextField(cell: TextFieldTableViewCell) {
         let viewModel = TextFieldTableViewCell.ViewModel(text: nil,
                                                          placeholder: Localization.optionNameCellPlaceholder,
-                                                         onTextChange: { newAttributeOption in
+                                                         onTextChange: nil,
+                                                         onTextDidBeginEditing: nil,
+                                                         onTextDidReturn: { [weak self] text in
+                                                            if let text = text {
+                                                                self?.viewModel.addNewOption(name: text)
+                                                            }
 
-            }, onTextDidBeginEditing: {
-        }, inputFormatter: nil, keyboardType: .default)
+                                                         }, inputFormatter: nil,
+                                                         keyboardType: .default)
         cell.configure(viewModel: viewModel)
         cell.applyStyle(style: .body)
     }
 
-    func configureOption(cell: BasicTableViewCell) {
-        cell.textLabel?.text = "Work in progress" //TODO: to be implemented
+    func configureOptionOffered(cell: BasicTableViewCell, text: String, index: Int) {
+        cell.imageView?.tintColor = .tertiaryLabel
+        cell.imageView?.image = UIImage.deleteCellImage
+        cell.textLabel?.text = text
+
+        // Listen to taps on the cell's image view
+        let tapRecognizer = UITapGestureRecognizer()
+        tapRecognizer.on { [weak self] _ in
+            self?.viewModel.removeSelectedOption(atIndex: index)
+        }
+        cell.imageView?.addGestureRecognizer(tapRecognizer)
+        cell.imageView?.isUserInteractionEnabled = true
+    }
+
+    func configureOptionAdded(cell: BasicTableViewCell, text: String) {
+        cell.textLabel?.text = text
+        cell.imageView?.image = nil
+        cell.imageView?.isUserInteractionEnabled = false
     }
 }
 
@@ -188,8 +342,94 @@ extension AddAttributeOptionsViewController: KeyboardScrollable {
 //
 extension AddAttributeOptionsViewController {
 
-    @objc private func doneButtonPressed() {
-        // TODO: to be implemented
+    @objc private func nextButtonPressed() {
+        viewModel.updateProductAttributes { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case let .success(product):
+                self.onCompletion(product)
+            case let .failure(error):
+                self.noticePresenter.enqueue(notice: .init(title: Localization.updateAttributeError, feedbackType: .error))
+                DDLogError(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Present an action-sheet with `Remove` and `Rename` options.
+    ///
+    @objc private func moreButtonPressed(_ sender: UIBarButtonItem) {
+        let actionSheet = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        actionSheet.view.tintColor = .text
+
+        if viewModel.allowsRename {
+            let renameAction = UIAlertAction(title: Localization.renameAction, style: .default) { [weak self] _ in
+                self?.trackRenameAttributeButtonTapped()
+                self?.navigateToRenameAttribute()
+            }
+            actionSheet.addAction(renameAction)
+        }
+
+        let removeAction = UIAlertAction(title: Localization.removeAction, style: .destructive) { [weak self] _ in
+            self?.presentRemoveAttributeConfirmation()
+        }
+        actionSheet.addAction(removeAction)
+
+        let cancelAction = UIAlertAction(title: Localization.cancelAction, style: .cancel)
+        actionSheet.addAction(cancelAction)
+
+        let popoverController = actionSheet.popoverPresentationController
+        popoverController?.barButtonItem = sender
+
+        present(actionSheet, animated: true)
+    }
+
+    func trackRenameAttributeButtonTapped() {
+        analytics.track(event: WooAnalyticsEvent.Variations.renameAttributeButtonTapped(productID: viewModel.product.productID))
+    }
+
+    /// Navigates to `RenameAttributesViewController`
+    ///
+    private func navigateToRenameAttribute() {
+        let viewModel = RenameAttributesViewModel(attributeName: self.viewModel.getCurrentAttributeName)
+        let renameAttributeViewController = RenameAttributesViewController(viewModel: viewModel) { [weak self] updatedAttributeName in
+            // Sets new attribute name
+            self?.viewModel.setCurrentAttributeName(updatedAttributeName)
+            self?.navigationController?.popViewController(animated: true)
+        }
+        show(renameAttributeViewController, sender: nil)
+    }
+
+    /// Presents a confirmation alert and removes the attribute if the merchant confirms it.
+    ///
+    private func presentRemoveAttributeConfirmation() {
+        let alertController = UIAlertController(title: Localization.removeConfirmationTitle,
+                                                message: Localization.removeConfirmationInfo,
+                                                preferredStyle: .alert)
+        alertController.view.tintColor = .text
+
+        alertController.addCancelActionWithTitle(Localization.cancelAction)
+        alertController.addDestructiveActionWithTitle(Localization.removeAction) { [weak self] _ in
+            guard let self = self else { return }
+            self.analytics.track(event: WooAnalyticsEvent.Variations.removeAttributeButtonTapped(productID: self.viewModel.product.productID))
+            self.removeCurrentAttribute()
+        }
+
+        present(alertController, animated: true)
+    }
+
+    /// Tells the view model to remove the current attribute and pops the view controller after completion
+    ///
+    func removeCurrentAttribute() {
+        viewModel.removeCurrentAttribute { [weak self] result in
+            guard let self = self else { return }
+            switch result {
+            case let .success(product):
+                self.onCompletion(product)
+            case let .failure(error):
+                self.noticePresenter.enqueue(notice: .init(title: Localization.removeAttributeError, feedbackType: .error))
+                DDLogError(error.localizedDescription)
+            }
+        }
     }
 }
 
@@ -199,18 +439,20 @@ extension AddAttributeOptionsViewController {
         let header: String?
         let footer: String?
         let rows: [Row]
+        let allowsReorder: Bool
+        let allowsSelection: Bool
     }
 
-    enum Row: CaseIterable {
-        case termTextField
-        case selectedTerms
-        case existingTerms
+    enum Row: Equatable {
+        case optionTextField
+        case selectedOptions(name: String)
+        case existingOptions(name: String)
 
         fileprivate var type: UITableViewCell.Type {
             switch self {
-            case .termTextField:
+            case .optionTextField:
                 return TextFieldTableViewCell.self
-            case .selectedTerms, .existingTerms:
+            case .selectedOptions, .existingOptions:
                 return BasicTableViewCell.self
             }
         }
@@ -226,5 +468,22 @@ private extension AddAttributeOptionsViewController {
         static let nextNavBarButton = NSLocalizedString("Next", comment: "Next nav bar button title in Add Product Attribute Options screen")
         static let optionNameCellPlaceholder = NSLocalizedString("Option name",
                                                             comment: "Placeholder of cell presenting the title of the new attribute option.")
+        static let updateAttributeError = NSLocalizedString("The attribute couldn't be saved.",
+                                                            comment: "Error title when trying to update or create an attribute remotely.")
+
+        static let syncErrorMessage = NSLocalizedString("Unable to load attribute options", comment: "Load Attribute Options Action Failed")
+        static let retryAction = NSLocalizedString("Retry", comment: "Retry Action")
+
+        static let removeAttributeError = NSLocalizedString("The attribute couldn't be removed.",
+                                                            comment: "Error title when trying to remove an attribute remotely.")
+
+        static let renameAction = NSLocalizedString("Rename", comment: "Title for renaming an attribute in the edit attribute action sheet.")
+        static let removeAction = NSLocalizedString("Remove", comment: "Title for removing an attribute in the edit attribute action sheet.")
+        static let cancelAction = NSLocalizedString("Cancel", comment: "Title for canceling the edit attribute action sheet.")
+
+        static let removeConfirmationTitle = NSLocalizedString("Remove Attribute",
+                                                               comment: "Confirmation title before removing an attribute from a variation.")
+        static let removeConfirmationInfo = NSLocalizedString("Are you sure you want to remove this attribute?",
+                                                              comment: "Confirmation text before removing an attribute from a variation.")
     }
 }

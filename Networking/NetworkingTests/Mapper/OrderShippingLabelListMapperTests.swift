@@ -54,7 +54,8 @@ final class OrderShippingLabelListMapperTests: XCTestCase {
                                                        originAddress: originAddress,
                                                        destinationAddress: destinationAddress,
                                                        productIDs: [3013],
-                                                       productNames: ["Password protected!"])
+                                                       productNames: ["Password protected!"],
+                                                       commercialInvoiceURL: "https://woocommerce.com")
         let shippingLabelWithRefund = ShippingLabel(siteID: sampleSiteID,
                                                        orderID: sampleOrderID,
                                                        shippingLabelID: 2511668,
@@ -71,7 +72,20 @@ final class OrderShippingLabelListMapperTests: XCTestCase {
                                                        originAddress: originAddress,
                                                        destinationAddress: destinationAddress,
                                                        productIDs: [3013],
-                                                       productNames: ["Password protected!"])
+                                                       productNames: ["Password protected!"],
+                                                       commercialInvoiceURL: nil)
         XCTAssertEqual(response.shippingLabels, [shippingLabelWithoutRefund, shippingLabelWithRefund])
+    }
+
+    func test_order_shipping_labels_and_settings_are_properly_parsed_when_response_has_no_data_envelope() throws {
+        // Given
+        let jsonData = try XCTUnwrap(Loader.contentsOf("order-shipping-labels-without-data"))
+
+        // When
+        let response = try OrderShippingLabelListMapper(siteID: sampleSiteID, orderID: sampleOrderID).map(response: jsonData)
+
+        // Then
+        XCTAssertEqual(response.settings, .init(siteID: sampleSiteID, orderID: sampleOrderID, paperSize: .label))
+        XCTAssertEqual(response.shippingLabels.count, 1)
     }
 }

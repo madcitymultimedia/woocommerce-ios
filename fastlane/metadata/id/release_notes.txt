@@ -1,2 +1,1 @@
-Aplikasi kini mendukung iOS 13 dan di atasnya, sehingga pengembangan fitur dapat dilakukan dengan lebih cepat.
-Kami memperbaiki proses penanganan error di proses login, memperbaiki bug yang menyebabkan gambar thumbnail variasi produk tidak muncul di layar rincian pesanan, dan meletakkan spinner footer tepat di tengah dalam posisi vertikal maupun horizontal.
+Pada rilis kali ini, kami fokus untuk mengatasi bug minor yang tim kami temukan. Eits, tunggu dulu – kami juga sedang menggarap hal menarik untuk Anda semua! Terus berikan feedback agar kami tahu apa yang harus ditingkatkan selanjutnya.

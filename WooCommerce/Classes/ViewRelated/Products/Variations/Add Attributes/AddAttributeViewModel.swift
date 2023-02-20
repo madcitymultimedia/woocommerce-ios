@@ -12,7 +12,7 @@ final class AddAttributeViewModel {
     ///
     private let storesManager: StoresManager
 
-    private let product: Product
+    let product: Product
     private(set) var localAndGlobalAttributes: [ProductAttribute] = []
 
     private(set) var sections: [Section] = []
@@ -87,7 +87,7 @@ private extension AddAttributeViewModel {
     func updateSections(attributes: [ProductAttribute]) {
 
         /// Sum fetched attributes + attributes inside the product (global + local), and remove duplicated product attributes, then sort it
-        localAndGlobalAttributes = attributes + product.attributes.filter { element in
+        localAndGlobalAttributes = attributes + product.attributesForVariations.filter { element in
             return !attributes.contains { $0.attributeID == element.attributeID }
         }.sorted(by: > )
 
@@ -117,7 +117,8 @@ extension AddAttributeViewModel {
 
 private extension AddAttributeViewModel {
     enum Localization {
-        static let footerTextField = NSLocalizedString("Variation type (ie Color, Size)", comment: "Footer of text field section in Add Attribute screen")
+        static let footerTextField = NSLocalizedString("To create a variation, you'll need to set its attributes (i.e. \"Color,\" \"Size\") first",
+                                                       comment: "Footer of text field section in Add Attribute screen")
         static let headerAttributes = NSLocalizedString("Or tap to select existing attribute", comment: "Header of attributes section in Add Attribute screen")
     }
 }

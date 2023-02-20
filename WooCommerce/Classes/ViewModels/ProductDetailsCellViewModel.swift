@@ -1,15 +1,53 @@
 import Foundation
 import Yosemite
+import WooFoundation
+
+// MARK: - View Model for a Variation Attribute
+//
+struct VariationAttributeViewModel: Equatable {
+
+    /// Attribute name
+    ///
+    let name: String
+
+    /// Attribute value
+    ///
+    let value: String?
+
+    /// Returns the attribute value, or "Any \(name)" if the attribute value is nil or empty
+    ///
+    var nameOrValue: String {
+        guard let value = value, value.isNotEmpty else {
+            return String(format: Localization.anyAttributeFormat, name)
+        }
+        return value
+    }
+
+    init(name: String, value: String? = nil) {
+        self.name = name
+        self.value = value
+    }
+
+    init(orderItemAttribute: OrderItemAttribute) {
+        self.init(name: orderItemAttribute.name, value: orderItemAttribute.value)
+    }
+
+    init(productVariationAttribute: ProductVariationAttribute) {
+        self.init(name: productVariationAttribute.name, value: productVariationAttribute.option)
+    }
+}
+
+extension VariationAttributeViewModel {
+    enum Localization {
+        static let anyAttributeFormat =
+            NSLocalizedString("Any %1$@", comment: "Format of a product variation attribute description where the attribute is set to any value.")
+    }
+}
 
 
 // MARK: - View Model for a product details cell
 //
 struct ProductDetailsCellViewModel {
-    /// An attribute of order for product details UI.
-    struct OrderAttributeViewModel {
-        /// The value of the attribute.
-        let value: String
-    }
 
     // MARK: - Public properties
 
@@ -37,6 +75,10 @@ struct ProductDetailsCellViewModel {
     ///
     let sku: String?
 
+    /// Wether the item has add-ons associated to it.
+    ///
+    let hasAddOns: Bool
+
     // MARK: - Initializers
 
     private init(currency: String,
@@ -44,14 +86,16 @@ struct ProductDetailsCellViewModel {
                  imageURL: URL?,
                  name: String,
                  positiveQuantity: Decimal,
-                 positiveTotal: NSDecimalNumber?,
-                 positivePrice: NSDecimalNumber?,
+                 total: NSDecimalNumber?,
+                 price: NSDecimalNumber?,
                  skuText: String?,
-                 attributes: [OrderAttributeViewModel]) {
+                 attributes: [VariationAttributeViewModel],
+                 hasAddOns: Bool) {
         self.imageURL = imageURL
         self.name = name
         let quantity = NumberFormatter.localizedString(from: positiveQuantity as NSDecimalNumber, number: .decimal)
         self.quantity = quantity
+        self.hasAddOns = hasAddOns
         self.sku = {
             guard let sku = skuText, sku.isEmpty == false else {
                 return nil
@@ -60,17 +104,17 @@ struct ProductDetailsCellViewModel {
         }()
 
         self.total = {
-            guard let positiveTotal = positiveTotal else {
+            guard let total = total else {
                 return String()
             }
-            return currencyFormatter.formatAmount(positiveTotal, with: currency) ?? String()
+            return currencyFormatter.formatAmount(total, with: currency) ?? String()
         }()
 
         self.subtitle = {
-            guard let positivePrice = positivePrice else {
+            guard let price = price else {
                 return String()
             }
-            let itemPrice = currencyFormatter.formatAmount(positivePrice, with: currency) ?? String()
+            let itemPrice = currencyFormatter.formatAmount(price, with: currency) ?? String()
             return Localization.subtitle(quantity: quantity, price: itemPrice, attributes: attributes)
         }()
     }
@@ -80,16 +124,18 @@ struct ProductDetailsCellViewModel {
     init(item: OrderItem,
          currency: String,
          formatter: CurrencyFormatter = CurrencyFormatter(currencySettings: ServiceLocator.currencySettings),
-         product: Product? = nil) {
+         product: Product? = nil,
+         hasAddOns: Bool) {
         self.init(currency: currency,
                   currencyFormatter: formatter,
                   imageURL: product?.imageURL,
                   name: item.name,
                   positiveQuantity: abs(item.quantity),
-                  positiveTotal: formatter.convertToDecimal(from: item.total)?.abs() ?? NSDecimalNumber.zero,
-                  positivePrice: item.price.abs(),
+                  total: formatter.convertToDecimal(item.total) ?? NSDecimalNumber.zero,
+                  price: item.price,
                   skuText: item.sku,
-                  attributes: item.attributes.map { OrderAttributeViewModel(orderItemAttribute: $0) })
+                  attributes: item.attributes.map { VariationAttributeViewModel(orderItemAttribute: $0) },
+                  hasAddOns: hasAddOns)
     }
 
     /// Aggregate Order Item initializer
@@ -97,16 +143,18 @@ struct ProductDetailsCellViewModel {
     init(aggregateItem: AggregateOrderItem,
          currency: String,
          formatter: CurrencyFormatter = CurrencyFormatter(currencySettings: ServiceLocator.currencySettings),
-         product: Product? = nil) {
+         product: Product? = nil,
+         hasAddOns: Bool) {
         self.init(currency: currency,
                   currencyFormatter: formatter,
                   imageURL: aggregateItem.imageURL ?? product?.imageURL,
                   name: aggregateItem.name,
                   positiveQuantity: abs(aggregateItem.quantity),
-                  positiveTotal: aggregateItem.total?.abs(),
-                  positivePrice: aggregateItem.price?.abs(),
+                  total: aggregateItem.total,
+                  price: aggregateItem.price,
                   skuText: aggregateItem.sku,
-                  attributes: aggregateItem.attributes.map { OrderAttributeViewModel(orderItemAttribute: $0) })
+                  attributes: aggregateItem.attributes.map { VariationAttributeViewModel(orderItemAttribute: $0) },
+                  hasAddOns: hasAddOns)
     }
 
     /// Refunded Order Item initializer
@@ -120,10 +168,11 @@ struct ProductDetailsCellViewModel {
                   imageURL: product?.imageURL,
                   name: refundedItem.name,
                   positiveQuantity: abs(refundedItem.quantity),
-                  positiveTotal: formatter.convertToDecimal(from: refundedItem.total)?.abs() ?? NSDecimalNumber.zero,
-                  positivePrice: refundedItem.price.abs(),
+                  total: formatter.convertToDecimal(refundedItem.total) ?? NSDecimalNumber.zero,
+                  price: refundedItem.price,
                   skuText: refundedItem.sku,
-                  attributes: []) // Attributes are not supported for a refund item yet.
+                  attributes: [], // Attributes are not supported for a refund item yet.
+                  hasAddOns: false) // AddOns are not supported for a refund item yet.
     }
 }
 
@@ -141,29 +190,13 @@ private extension ProductDetailsCellViewModel {
                                 + " the pattern used to show the attributes and quantity multiplied by the price. For example, “purple, has logo・23 x $400.00”."
                                 + " The %1$@ is the list of attributes (e.g. from variation)."
                                 + " The %2$@ is the quantity. The %3$@ is the formatted price with currency (e.g. $400.00).")
-        static func subtitle(quantity: String, price: String, attributes: [OrderAttributeViewModel]) -> String {
-            let attributesText = attributes.map { $0.value }.joined(separator: ", ")
+        static func subtitle(quantity: String, price: String, attributes: [VariationAttributeViewModel]) -> String {
+            let attributesText = attributes.map { $0.nameOrValue }.joined(separator: ", ")
             if attributes.isEmpty {
                 return String.localizedStringWithFormat(subtitleFormat, quantity, price)
             } else {
                 return String.localizedStringWithFormat(subtitleWithAttributesFormat, attributesText, quantity, price)
             }
         }
-    }
-}
-
-private extension ProductDetailsCellViewModel.OrderAttributeViewModel {
-    init(orderItemAttribute: OrderItemAttribute) {
-        self.value = orderItemAttribute.value
-    }
-}
-
-private extension Product {
-    /// Returns the URL of the first image, if available. Otherwise, nil is returned.
-    var imageURL: URL? {
-        guard let productImageURLString = images.first?.src else {
-            return nil
-        }
-        return URL(string: productImageURLString)
     }
 }

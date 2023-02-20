@@ -4,12 +4,34 @@ import UIKit
 ///
 final class TextFieldTableViewCell: UITableViewCell {
     struct ViewModel {
+        init(text: String? = nil,
+             placeholder: String? = nil,
+             onTextChange: ((String?) -> Void)? = nil,
+             onTextDidBeginEditing: (() -> Void)? = nil,
+             onTextDidReturn: ((String?) -> Void)? = nil,
+             inputFormatter: UnitInputFormatter? = nil,
+             keyboardType: UIKeyboardType,
+             returnKeyType: UIReturnKeyType = .default,
+             autocapitalizationType: UITextAutocapitalizationType = .none) {
+            self.text = text
+            self.placeholder = placeholder
+            self.onTextChange = onTextChange
+            self.onTextDidBeginEditing = onTextDidBeginEditing
+            self.onTextDidReturn = onTextDidReturn
+            self.inputFormatter = inputFormatter
+            self.keyboardType = keyboardType
+            self.returnKeyType = returnKeyType
+            self.autocapitalizationType = autocapitalizationType
+        }
         let text: String?
         let placeholder: String?
         let onTextChange: ((_ text: String?) -> Void)?
         let onTextDidBeginEditing: (() -> Void)?
+        let onTextDidReturn: ((_ text: String?) -> Void)?
         let inputFormatter: UnitInputFormatter?
         let keyboardType: UIKeyboardType
+        let returnKeyType: UIReturnKeyType
+        let autocapitalizationType: UITextAutocapitalizationType
     }
 
     @IBOutlet private weak var textField: UITextField!
@@ -36,6 +58,8 @@ final class TextFieldTableViewCell: UITableViewCell {
         textField.placeholder = viewModel.placeholder
         textField.borderStyle = .none
         textField.keyboardType = viewModel.keyboardType
+        textField.returnKeyType = viewModel.returnKeyType
+        textField.autocapitalizationType = viewModel.autocapitalizationType
         textField.addTarget(self, action: #selector(textFieldDidChange(textField:)), for: .editingChanged)
         textField.addTarget(self, action: #selector(textFieldDidBegin(textField:)), for: .editingDidBegin)
     }
@@ -106,6 +130,7 @@ extension TextFieldTableViewCell: UITextFieldDelegate {
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        viewModel?.onTextDidReturn?(textField.text)
         textField.resignFirstResponder()
         return true
     }

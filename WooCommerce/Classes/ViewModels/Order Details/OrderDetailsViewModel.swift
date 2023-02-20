@@ -3,23 +3,43 @@ import UIKit
 import Gridicons
 import Yosemite
 import MessageUI
+import Combine
+import Experiments
+import WooFoundation
+import SwiftUI
+import enum Networking.DotcomError
+import protocol Storage.StorageManagerType
 
 final class OrderDetailsViewModel {
-    private let currencyFormatter = CurrencyFormatter(currencySettings: ServiceLocator.currencySettings)
+
+    private let stores: StoresManager
+    private let storageManager: StorageManagerType
+    private let currencyFormatter: CurrencyFormatter
 
     private(set) var order: Order
+
+    /// Defines the current sync states of the view model data.
+    ///
+    private var syncState: SyncState = .notSynced
 
     var orderStatus: OrderStatus? {
         return lookUpOrderStatus(for: order)
     }
 
-    init(order: Order) {
+    init(order: Order,
+         stores: StoresManager = ServiceLocator.stores,
+         storageManager: StorageManagerType = ServiceLocator.storageManager,
+         currencyFormatter: CurrencyFormatter = CurrencyFormatter(currencySettings: ServiceLocator.currencySettings)) {
         self.order = order
+        self.stores = stores
+        self.storageManager = storageManager
+        self.currencyFormatter = currencyFormatter
     }
 
     func update(order newOrder: Order) {
         self.order = newOrder
         dataSource.update(order: order)
+        editNoteViewModel.update(order: order)
     }
 
     let productLeftTitle = NSLocalizedString("PRODUCT", comment: "Product section title")
@@ -65,10 +85,18 @@ final class OrderDetailsViewModel {
         }
     }
 
+    /// IPP Configuration loader
+    private lazy var configurationLoader = CardPresentConfigurationLoader(stores: stores)
+
     /// The datasource that will be used to render the Order Details screen
     ///
     private(set) lazy var dataSource: OrderDetailsDataSource = {
-        return OrderDetailsDataSource(order: order)
+        return OrderDetailsDataSource(order: order,
+                                      cardPresentPaymentsConfiguration: configurationLoader.configuration)
+    }()
+
+    private(set) lazy var editNoteViewModel: EditCustomerNoteViewModel = {
+        return EditCustomerNoteViewModel(order: order)
     }()
 
     /// Order Notes
@@ -98,12 +126,43 @@ final class OrderDetailsViewModel {
         }
     }
 
+    /// Closure to be executed when the more menu on Products section is tapped.
+    ///
+    var onProductsMoreMenuTapped: ((_ sourceView: UIView) -> Void)? {
+        didSet {
+            dataSource.onProductsMoreMenuTapped = onProductsMoreMenuTapped
+        }
+    }
+
     /// Closure to be executed when the shipping label more menu is tapped.
     ///
     var onShippingLabelMoreMenuTapped: ((_ shippingLabel: ShippingLabel, _ sourceView: UIView) -> Void)? {
         didSet {
             dataSource.onShippingLabelMoreMenuTapped = onShippingLabelMoreMenuTapped
         }
+    }
+
+    /// The customer's email address, if available
+    ///
+    var customerEmail: String? {
+        order.billingAddress?.email
+    }
+
+    private var receipt: CardPresentReceiptParameters? = nil
+
+    /// Returns edit action availability given the internal state.
+    ///
+    var editButtonIsEnabled: Bool {
+        syncState == .synced
+    }
+
+    var paymentMethodsViewModel: PaymentMethodsViewModel {
+        let formattedTotal = currencyFormatter.formatAmount(order.total, with: order.currency) ?? String()
+        return PaymentMethodsViewModel(siteID: order.siteID,
+                                       orderID: order.orderID,
+                                       paymentLink: order.paymentURL,
+                                       formattedTotal: formattedTotal,
+                                       flow: .orderPayment)
     }
 
     /// Helpers
@@ -121,16 +180,116 @@ final class OrderDetailsViewModel {
     }
 }
 
+// MARK: Syncing
+extension OrderDetailsViewModel {
+    /// Syncs all data related to the current order.
+    ///
+    func syncEverything(onReloadSections: (() -> ())? = nil, onCompletion: (() -> ())? = nil) {
+        let group = DispatchGroup()
+
+        group.enter()
+        syncOrder { [weak self] _ in
+            defer {
+                group.leave()
+            }
+
+            // Products require order.items data, so sync them only after the order is loaded
+            guard let self = self else { return }
+
+            group.enter()
+            self.syncProducts { _ in
+                group.leave()
+            }
+
+            group.enter()
+            self.syncProductVariations { _ in
+                group.leave()
+            }
+        }
+
+        group.enter()
+        syncRefunds() { _ in
+            group.leave()
+        }
+
+        group.enter()
+        syncShippingLabels() { _ in
+            group.leave()
+        }
+
+        group.enter()
+        syncNotes { _ in
+            group.leave()
+        }
+
+        group.enter()
+        syncTrackingsEnablingAddButtonIfReachable(onReloadSections: onReloadSections) {
+            group.leave()
+        }
+
+        group.enter()
+        checkShippingLabelCreationEligibility {
+            onReloadSections?()
+            group.leave()
+        }
+
+        group.enter()
+        syncSavedReceipts {_ in
+            group.leave()
+        }
+
+        group.enter()
+        checkOrderAddOnFeatureSwitchState {
+            onReloadSections?()
+            group.leave()
+        }
+
+        group.notify(queue: .main) { [weak self] in
+
+            /// Update state to synced
+            ///
+            self?.syncState = .synced
+
+            onReloadSections?()
+            onCompletion?()
+        }
+    }
+
+    func syncOrder(onCompletion: ((Error?) -> ())? = nil) {
+        syncOrder { [weak self] (order, error) in
+            guard let self = self, let order = order else {
+                onCompletion?(error)
+                return
+            }
+
+            self.update(order: order)
+
+            onCompletion?(nil)
+        }
+    }
+
+    func syncTrackingsEnablingAddButtonIfReachable(onReloadSections: (() -> ())? = nil, onCompletion: (() -> Void)? = nil) {
+        // If the plugin is not active, there is no point on continuing with a request that will fail.
+        isPluginActive(SitePlugin.SupportedPlugin.WCTracking) { [weak self] isActive in
+            guard let self = self, isActive else {
+                onCompletion?()
+                return
+            }
+
+            self.trackingIsReachable = true
+            self.syncTracking { error in
+                onReloadSections?()
+                onCompletion?()
+            }
+        }
+    }
+}
 
 // MARK: - Configuring results controllers
 //
 extension OrderDetailsViewModel {
     func configureResultsControllers(onReload: @escaping () -> Void) {
         dataSource.configureResultsControllers(onReload: onReload)
-    }
-
-    func updateOrderStatus(order: Order) {
-        update(order: order)
     }
 }
 
@@ -155,7 +314,8 @@ extension OrderDetailsViewModel {
             SummaryTableViewCell.self,
             ButtonTableViewCell.self,
             IssueRefundTableViewCell.self,
-            ImageAndTitleAndTextTableViewCell.self
+            ImageAndTitleAndTextTableViewCell.self,
+            WCShipInstallTableViewCell.self
         ]
 
         for cellClass in cells {
@@ -213,6 +373,10 @@ extension OrderDetailsViewModel {
                                                                    forceReadOnly: true)
             let navController = WooNavigationController(rootViewController: loaderViewController)
             viewController.present(navController, animated: true, completion: nil)
+        case .shippingLabelCreationInfo:
+            let infoViewController = ShippingLabelCreationInfoViewController()
+            let navigationController = WooNavigationController(rootViewController: infoViewController)
+            viewController.present(navigationController, animated: true, completion: nil)
         case .shippingLabelDetail:
             guard let shippingLabel = dataSource.shippingLabel(at: indexPath) else {
                 return
@@ -223,22 +387,30 @@ extension OrderDetailsViewModel {
             let printingInstructionsViewController = ShippingLabelPrintingInstructionsViewController()
             let navigationController = WooNavigationController(rootViewController: printingInstructionsViewController)
             viewController.present(navigationController, animated: true, completion: nil)
-        case .shippingLabelProduct:
-            guard let item = dataSource.shippingLabelOrderItem(at: indexPath), item.productOrVariationID > 0 else {
-                return
-            }
-            let loaderViewController = ProductLoaderViewController(model: .init(aggregateOrderItem: item),
-                                                                   siteID: order.siteID,
-                                                                   forceReadOnly: true)
-            let navController = WooNavigationController(rootViewController: loaderViewController)
-            viewController.present(navController, animated: true, completion: nil)
+        case .shippingLabelProducts:
+            let shippingLabelItems = dataSource.shippingLabelOrderItems(at: indexPath)
+            let productListVC = AggregatedProductListViewController(viewModel: self, items: shippingLabelItems)
+            viewController.show(productListVC, sender: nil)
         case .billingDetail:
             ServiceLocator.analytics.track(.orderDetailShowBillingTapped)
-            let billingInformationViewController = BillingInformationViewController(order: order)
+            let billingInformationViewController = BillingInformationViewController(order: order, editingEnabled: true)
             viewController.navigationController?.pushViewController(billingInformationViewController, animated: true)
-        case .details:
-            ServiceLocator.analytics.track(.orderDetailProductDetailTapped)
-            viewController.performSegue(withIdentifier: Constants.productDetailsSegue, sender: nil)
+        case .customFields:
+            ServiceLocator.analytics.track(.orderViewCustomFieldsTapped)
+            let customFields = order.customFields.map {
+                OrderCustomFieldsViewModel(metadata: $0)
+            }
+            let customFieldsView = UIHostingController(rootView: OrderCustomFieldsDetails(customFields: customFields))
+            viewController.present(customFieldsView, animated: true)
+        case .seeReceipt:
+            let countryCode = configurationLoader.configuration.countryCode
+            ServiceLocator.analytics.track(event: .InPersonPayments.receiptViewTapped(countryCode: countryCode))
+            guard let receipt = receipt else {
+                return
+            }
+            let viewModel = ReceiptViewModel(order: order, receipt: receipt, countryCode: countryCode)
+            let receiptViewController = ReceiptViewController(viewModel: viewModel)
+            viewController.navigationController?.pushViewController(receiptViewController, animated: true)
         case .refund:
             ServiceLocator.analytics.track(.orderDetailRefundDetailTapped)
             guard let refund = dataSource.refund(at: indexPath) else {
@@ -257,15 +429,24 @@ extension OrderDetailsViewModel {
             let viewModel = RefundedProductsViewModel(order: order, refundedProducts: refundedProducts)
             let refundedProductsDetailViewController = RefundedProductsViewController(viewModel: viewModel)
             viewController.navigationController?.pushViewController(refundedProductsDetailViewController, animated: true)
+        case .installWCShip:
+            //TODO: add analytics
+            let wcShipInstallationFlowVC = Inject.ViewControllerHost(WCShipCTAHostingController())
+            viewController.present(wcShipInstallationFlowVC, animated: true)
         default:
             break
         }
     }
 }
 
-
 // MARK: - Syncing data. Yosemite related stuff
+
 extension OrderDetailsViewModel {
+    /// Dispatches a network call in order to update `self.order`'s `status` to `.completed`.
+    func markCompleted(flow: WooAnalyticsEvent.Orders.Flow) -> OrderFulfillmentUseCase.FulfillmentProcess {
+        OrderFulfillmentUseCase(order: order, stores: stores, flow: flow).fulfill()
+    }
+
     func syncOrder(onCompletion: ((Order?, Error?) -> ())? = nil) {
         let action = OrderAction.retrieveOrder(siteID: order.siteID, orderID: order.orderID) { (order, error) in
             guard let _ = order else {
@@ -277,7 +458,7 @@ extension OrderDetailsViewModel {
             onCompletion?(order, nil)
         }
 
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncTracking(onCompletion: ((Error?) -> Void)? = nil) {
@@ -296,7 +477,7 @@ extension OrderDetailsViewModel {
                                                                         onCompletion?(nil)
         }
 
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncNotes(onCompletion: ((Error?) -> ())? = nil) {
@@ -314,7 +495,7 @@ extension OrderDetailsViewModel {
             onCompletion?(nil)
         }
 
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncProducts(onCompletion: ((Error?) -> ())? = nil) {
@@ -329,7 +510,7 @@ extension OrderDetailsViewModel {
             onCompletion?(nil)
         }
 
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncProductVariations(onCompletion: ((Error?) -> ())? = nil) {
@@ -341,7 +522,7 @@ extension OrderDetailsViewModel {
             }
             onCompletion?(nil)
         }
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncRefunds(onCompletion: ((Error?) -> ())? = nil) {
@@ -357,20 +538,77 @@ extension OrderDetailsViewModel {
             onCompletion?(nil)
         }
 
-        ServiceLocator.stores.dispatch(action)
+        stores.dispatch(action)
     }
 
     func syncShippingLabels(onCompletion: ((Error?) -> ())? = nil) {
-        let action = ShippingLabelAction.synchronizeShippingLabels(siteID: order.siteID, orderID: order.orderID) { result in
-            switch result {
-            case .success:
-                ServiceLocator.analytics.track(event: .shippingLabelsAPIRequest(result: .success))
+        // If the plugin is not active, there is no point on continuing with a request that will fail.
+        isPluginActive(SitePlugin.SupportedPlugin.WCShip) { [weak self] isActive in
+
+            guard let self = self, isActive else {
                 onCompletion?(nil)
-            case .failure(let error):
-                ServiceLocator.analytics.track(event: .shippingLabelsAPIRequest(result: .failed))
-                DDLogError("⛔️ Error synchronizing shipping labels: \(error)")
-                onCompletion?(error)
+                return
             }
+
+            let action = ShippingLabelAction.synchronizeShippingLabels(siteID: self.order.siteID, orderID: self.order.orderID) { result in
+                switch result {
+                case .success:
+                    ServiceLocator.analytics.track(event: .shippingLabelsAPIRequest(result: .success))
+                    onCompletion?(nil)
+                case .failure(let error):
+                    ServiceLocator.analytics.track(event: .shippingLabelsAPIRequest(result: .failed(error: error)))
+                    if error as? DotcomError == .noRestRoute {
+                        DDLogError("⚠️ Endpoint for synchronizing shipping labels is unreachable. WC Shipping plugin may be missing.")
+                    } else {
+                        DDLogError("⛔️ Error synchronizing shipping labels: \(error)")
+                    }
+                    onCompletion?(error)
+                }
+            }
+            self.stores.dispatch(action)
+
+        }
+    }
+
+    func syncSavedReceipts(onCompletion: ((Error?) -> ())? = nil) {
+        let action = ReceiptAction.loadReceipt(order: order) { [weak self] result in
+            switch result {
+            case .success(let parameters):
+                self?.receipt = parameters
+                self?.dataSource.shouldShowReceipts = true
+            case .failure:
+                self?.dataSource.shouldShowReceipts = false
+            }
+            onCompletion?(nil)
+        }
+        stores.dispatch(action)
+    }
+
+    func checkShippingLabelCreationEligibility(onCompletion: (() -> Void)? = nil) {
+        // If the plugin is not active, there is no point on continuing with a request that will fail.
+        isPluginActive(SitePlugin.SupportedPlugin.WCShip) { [weak self] isActive in
+            guard let self = self, isActive else {
+                onCompletion?()
+                return
+            }
+
+            let action = ShippingLabelAction.checkCreationEligibility(siteID: self.order.siteID,
+                                                                      orderID: self.order.orderID) { [weak self] isEligible in
+                self?.dataSource.isEligibleForShippingLabelCreation = isEligible
+                if isEligible, let orderStatus = self?.orderStatus?.status.rawValue {
+                    ServiceLocator.analytics.track(.shippingLabelOrderIsEligible,
+                                                   withProperties: ["order_status": orderStatus])
+                }
+                onCompletion?()
+            }
+            self.stores.dispatch(action)
+        }
+    }
+
+    func checkOrderAddOnFeatureSwitchState(onCompletion: (() -> Void)? = nil) {
+        let action = AppSettingsAction.loadOrderAddOnsSwitchState { [weak self] result in
+            self?.dataSource.showAddOns = (try? result.get()) ?? false
+            onCompletion?()
         }
         ServiceLocator.stores.dispatch(action)
     }
@@ -405,14 +643,42 @@ extension OrderDetailsViewModel {
 
         }
 
-        ServiceLocator.stores.dispatch(deleteTrackingAction)
+        stores.dispatch(deleteTrackingAction)
+    }
+
+    /// Helper function that returns `true` in its callback if the provided plugin name is active on the order's store.
+    /// Additionally it logs to tracks if the plugin store is accessed without it being in sync so we can handle that edge-case if it happens recurrently.
+    ///
+    private func isPluginActive(_ plugin: String, completion: @escaping (Bool) -> (Void)) {
+        guard arePluginsSynced() else {
+            DDLogError("⚠️ SystemPlugins acceded without being in sync.")
+            ServiceLocator.analytics.track(event: WooAnalyticsEvent.Orders.pluginsNotSyncedYet())
+            return completion(false)
+        }
+
+        let action = SystemStatusAction.fetchSystemPlugin(siteID: order.siteID, systemPluginName: plugin) { plugin in
+            completion(plugin?.active == true)
+        }
+        stores.dispatch(action)
+    }
+
+    /// Function that checks for any existing system plugin in the order's store.
+    /// If there is none, we assume plugins are not synced because at least the`WooCommerce` plugin should be present.
+    ///
+    private func arePluginsSynced() -> Bool {
+        let predicate = NSPredicate(format: "siteID == %lld", order.siteID)
+        let resultsController = ResultsController<StorageSystemPlugin>(storageManager: storageManager, matching: predicate, sortedBy: [])
+        try? resultsController.performFetch()
+        return !resultsController.isEmpty
     }
 }
 
+// MARK: Definitions
 private extension OrderDetailsViewModel {
-
-    enum Constants {
-        static let productDetailsSegue = "ShowProductListViewController"
-        static let orderStatusListSegue = "ShowOrderStatusListViewController"
+    /// Defines the possible sync states of the view model data.
+    ///
+    enum SyncState {
+        case notSynced
+        case synced
     }
 }

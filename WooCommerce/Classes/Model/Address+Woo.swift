@@ -79,6 +79,12 @@ extension Address {
     var hasEmailAddress: Bool {
         return email?.isEmpty == false
     }
+
+    /// Indicates if an address has only empty values.
+    ///
+    var isEmpty: Bool {
+        self == .empty
+    }
 }
 
 
@@ -106,6 +112,7 @@ private extension Address {
         address.state = state
         address.postalCode = postcode
         address.country = country
+        address.isoCountryCode = country
 
         return address
     }

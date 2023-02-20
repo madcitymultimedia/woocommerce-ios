@@ -48,13 +48,13 @@ final class ProductsRemoteTests: XCTestCase {
                                       name: "Product",
                                       slug: "product",
                                       permalink: "https://example.com/product/product/",
-                                      date: date(with: "2020-09-03T02:52:44"),
-                                      dateCreated: date(with: "2020-09-03T02:52:44"),
-                                      dateModified: date(with: "2020-09-03T02:52:44"),
+                                      date: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
+                                      dateCreated: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
+                                      dateModified: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
                                       dateOnSaleStart: nil,
                                       dateOnSaleEnd: nil,
                                       productTypeKey: ProductType.simple.rawValue,
-                                      statusKey: ProductStatus.publish.rawValue,
+                                      statusKey: ProductStatus.published.rawValue,
                                       featured: false,
                                       catalogVisibilityKey: ProductCatalogVisibility.visible.rawValue,
                                       fullDescription: "",
@@ -104,7 +104,8 @@ final class ProductsRemoteTests: XCTestCase {
                                       defaultAttributes: [],
                                       variations: [],
                                       groupedProducts: [],
-                                      menuOrder: 0)
+                                      menuOrder: 0,
+                                      addOns: [])
         XCTAssertEqual(addedProduct, expectedProduct)
     }
 
@@ -150,13 +151,13 @@ final class ProductsRemoteTests: XCTestCase {
                                       name: "Product",
                                       slug: "product",
                                       permalink: "https://example.com/product/product/",
-                                      date: date(with: "2020-09-03T02:52:44"),
-                                      dateCreated: date(with: "2020-09-03T02:52:44"),
-                                      dateModified: date(with: "2020-09-03T02:52:44"),
+                                      date: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
+                                      dateCreated: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
+                                      dateModified: DateFormatter.dateFromString(with: "2020-09-03T02:52:44"),
                                       dateOnSaleStart: nil,
                                       dateOnSaleEnd: nil,
                                       productTypeKey: ProductType.simple.rawValue,
-                                      statusKey: ProductStatus.publish.rawValue,
+                                      statusKey: ProductStatus.published.rawValue,
                                       featured: false,
                                       catalogVisibilityKey: ProductCatalogVisibility.visible.rawValue,
                                       fullDescription: "",
@@ -206,7 +207,8 @@ final class ProductsRemoteTests: XCTestCase {
                                       defaultAttributes: [],
                                       variations: [],
                                       groupedProducts: [],
-                                      menuOrder: 0)
+                                      menuOrder: 0,
+                                      addOns: [])
         XCTAssertEqual(deletedProduct, expectedProduct)
     }
 
@@ -266,9 +268,9 @@ final class ProductsRemoteTests: XCTestCase {
         }
 
         // Assert
-        let pathComponents = try XCTUnwrap(network.pathComponents)
+        let queryParameters = try XCTUnwrap(network.queryParameters)
         let expectedParam = "exclude=17,671"
-        XCTAssertTrue(pathComponents.contains(expectedParam), "Expected to have param: \(expectedParam)")
+        XCTAssertTrue(queryParameters.contains(expectedParam), "Expected to have param: \(expectedParam)")
     }
 
     /// Verifies that loadAllProducts properly relays Networking Layer errors.
@@ -370,41 +372,86 @@ final class ProductsRemoteTests: XCTestCase {
 
     /// Verifies that searchProducts properly parses the `products-load-all` sample response.
     ///
-    func testSearchProductsProperlyReturnsParsedProducts() {
+    func test_searchProducts_properly_returns_parsed_products() throws {
+        // Given
         let remote = ProductsRemote(network: network)
-        let expectation = self.expectation(description: "Wait for product search results")
-
         network.simulateResponse(requestUrlSuffix: "products", filename: "products-search-photo")
 
-        remote.searchProducts(for: sampleSiteID,
-                              keyword: "photo",
-                              pageNumber: 0,
-                              pageSize: 100) { (products, error) in
-                                XCTAssertNil(error)
-                                XCTAssertNotNil(products)
-                                XCTAssertEqual(products?.count, 2)
-                                expectation.fulfill()
+        // When
+        let result: Result<[Product], Error> = waitFor { promise in
+            remote.searchProducts(for: self.sampleSiteID,
+                                  keyword: "photo",
+                                  pageNumber: 0,
+                                  pageSize: 100) { result in
+                promise(result)
+            }
         }
 
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let products = try result.get()
+        XCTAssertEqual(products.count, 2)
     }
 
     /// Verifies that searchProducts properly relays Networking Layer errors.
     ///
-    func testSearchProductsProperlyRelaysNetwokingErrors() {
+    func test_searchProducts_properly_relays_networking_errors() {
+        // Given
         let remote = ProductsRemote(network: network)
-        let expectation = self.expectation(description: "Wait for product search results")
 
-        remote.searchProducts(for: sampleSiteID,
-                              keyword: String(),
-                              pageNumber: 0,
-                              pageSize: 100) { (products, error) in
-                                XCTAssertNil(products)
-                                XCTAssertNotNil(error)
-                                expectation.fulfill()
+        // When
+        let result: Result<[Product], Error> = waitFor { promise in
+            remote.searchProducts(for: self.sampleSiteID,
+                                  keyword: String(),
+                                  pageNumber: 0,
+                                  pageSize: 100) { result in
+                promise(result)
+            }
         }
 
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    // MARK: - Search Products by SKU
+
+    func test_searchProductsBySKU_properly_returns_parsed_products() throws {
+        // Given
+        let remote = ProductsRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "products", filename: "products-sku-search")
+
+        // When
+        let result: Result<[Product], Error> = waitFor { promise in
+            remote.searchProductsBySKU(for: self.sampleSiteID,
+                                       keyword: "choco",
+                                       pageNumber: 0,
+                                       pageSize: 100) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let products = try result.get()
+        XCTAssertEqual(products.count, 1)
+    }
+
+    func test_searchProductsBySKU_properly_relays_networking_errors() {
+        // Given
+        let remote = ProductsRemote(network: network)
+
+        // When
+        let result: Result<[Product], Error> = waitFor { promise in
+            remote.searchProductsBySKU(for: self.sampleSiteID,
+                                       keyword: String(),
+                                       pageNumber: 0,
+                                       pageSize: 100) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
 
@@ -412,39 +459,41 @@ final class ProductsRemoteTests: XCTestCase {
 
     /// Verifies that searchSku properly parses the product `sku` sample response.
     ///
-    func testSearchSkuProperlyReturnsParsedSku() {
+    func test_searchSku_properly_returns_parsed_sku() throws {
+        // Given
         let remote = ProductsRemote(network: network)
-        let expectation = self.expectation(description: "Search for a product sku")
-
         network.simulateResponse(requestUrlSuffix: "products", filename: "product-search-sku")
-
         let expectedSku = "T-SHIRT-HAPPY-NINJA"
 
-        remote.searchSku(for: sampleSiteID, sku: expectedSku) { (sku, error) in
-            XCTAssertNil(error)
-            XCTAssertNotNil(sku)
-            XCTAssertEqual(sku, expectedSku)
-            expectation.fulfill()
+        // When
+        let result: Result<String, Error> = waitFor { promise in
+            remote.searchSku(for: self.sampleSiteID, sku: expectedSku) { result in
+                promise(result)
+            }
         }
 
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let sku = try result.get()
+        XCTAssertEqual(sku, expectedSku)
     }
 
     /// Verifies that searchSku properly relays Networking Layer errors.
     ///
-    func testSearchSkuProperlyRelaysNetwokingErrors() {
+    func test_searchSku_properly_relays_netwoking_errors() {
+        // Given
         let remote = ProductsRemote(network: network)
-        let expectation = self.expectation(description: "Wait for a product sku result")
-
         let skuToSearch = "T-SHIRT-HAPPY-NINJA"
 
-        remote.searchSku(for: sampleSiteID, sku: skuToSearch) { (sku, error) in
-            XCTAssertNil(sku)
-            XCTAssertNotNil(error)
-            expectation.fulfill()
+        // When
+        let result: Result<String, Error> = waitFor { promise in
+            remote.searchSku(for: self.sampleSiteID, sku: skuToSearch) { result in
+                promise(result)
+            }
         }
 
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
 
@@ -495,6 +544,125 @@ final class ProductsRemoteTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - Update Product Images
+
+    /// Verifies that updateProductImages properly parses the `product-update` sample response.
+    ///
+    func test_updateProductImages_properly_returns_parsed_product() throws {
+        // Given
+        let remote = ProductsRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "products/\(sampleProductID)", filename: "product-update")
+
+        // When
+        let result = waitFor { promise in
+            remote.updateProductImages(siteID: self.sampleSiteID, productID: self.sampleProductID, images: []) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        let product = try XCTUnwrap(result.get())
+        XCTAssertEqual(product.images.map { $0.imageID }, [1043, 1064])
+    }
+
+    /// Verifies that updateProductImages properly relays Networking Layer errors.
+    ///
+    func test_updateProductImages_properly_relays_networking_error() {
+        // Given
+        let remote = ProductsRemote(network: network)
+
+        // When
+        let result = waitFor { promise in
+            remote.updateProductImages(siteID: self.sampleSiteID, productID: self.sampleProductID, images: []) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    // MARK: - Products batch update
+
+    /// Verifies that updateProducts properly parses the `products-batch-update` sample response.
+    ///
+    func test_bulk_update_products_properly_returns_parsed_products() {
+        // Given
+        let remote = ProductsRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "products/batch", filename: "products-batch-update")
+
+        // When
+        let sampleProducts = [sampleProduct()]
+        let updatedProducts = waitFor { promise in
+            remote.updateProducts(siteID: self.sampleSiteID, products: sampleProducts) { result in
+                // Then
+                guard case let .success(products) = result else {
+                    XCTFail("Unexpected result: \(result)")
+                    return
+                }
+                promise(products)
+            }
+        }
+
+        // Then
+        assertEqual(updatedProducts, sampleProducts)
+    }
+
+    // MARK: - Product IDs
+
+    /// Verifies that loadProductIDs properly parses the `products-ids-only` sample response.
+    ///
+    func test_loadProductIDs_properly_returns_parsed_ids() throws {
+        // Given
+        let remote = ProductsRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "products", filename: "products-ids-only")
+
+        // When
+        let result = waitFor { promise in
+            remote.loadProductIDs(for: self.sampleSiteID) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        let productIDs = try XCTUnwrap(result.get())
+        XCTAssertEqual(productIDs, [3946])
+    }
+
+    /// Verifies that loadProductIDs properly relays Networking Layer errors.
+    ///
+    func test_loadProductIDs_properly_relays_networking_error() {
+        // Given
+        let remote = ProductsRemote(network: network)
+
+        // When
+        let result = waitFor { promise in
+            remote.loadProductIDs(for: self.sampleSiteID) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    func test_create_template_product_returns_product_id() throws {
+        // Given
+        let remote = ProductsRemote(network: network)
+        network.simulateResponse(requestUrlSuffix: "onboarding/tasks/create_product_from_template", filename: "product-id-only")
+
+        // When
+        let result = waitFor { promise in
+            remote.createTemplateProduct(for: self.sampleSiteID, template: .physical) { result in
+                promise(result)
+            }
+        }
+
+        // Then
+        let productID = try XCTUnwrap(result.get())
+        XCTAssertEqual(productID, 3946)
+    }
 }
 
 // MARK: - Private Helpers
@@ -507,11 +675,11 @@ private extension ProductsRemoteTests {
                        name: "Book the Green Room",
                        slug: "book-the-green-room",
                        permalink: "https://example.com/product/book-the-green-room/",
-                       date: date(with: "2019-02-19T17:33:31"),
-                       dateCreated: date(with: "2019-02-19T17:33:31"),
-                       dateModified: date(with: "2019-02-19T17:48:01"),
-                       dateOnSaleStart: date(with: "2019-10-15T21:30:00"),
-                       dateOnSaleEnd: date(with: "2019-10-27T21:29:59"),
+                       date: DateFormatter.dateFromString(with: "2019-02-19T17:33:31"),
+                       dateCreated: DateFormatter.dateFromString(with: "2019-02-19T17:33:31"),
+                       dateModified: DateFormatter.dateFromString(with: "2019-02-19T17:48:01"),
+                       dateOnSaleStart: DateFormatter.dateFromString(with: "2019-10-15T21:30:00"),
+                       dateOnSaleEnd: DateFormatter.dateFromString(with: "2019-10-27T21:29:59"),
                        productTypeKey: "booking",
                        statusKey: "publish",
                        featured: false,
@@ -568,7 +736,8 @@ private extension ProductsRemoteTests {
                        defaultAttributes: sampleDefaultAttributes(),
                        variations: [192, 194, 193],
                        groupedProducts: [],
-                       menuOrder: 0)
+                       menuOrder: 0,
+                       addOns: [])
     }
 
     func sampleDimensions() -> Networking.ProductDimensions {
@@ -596,8 +765,8 @@ private extension ProductsRemoteTests {
 
     func sampleImages() -> [Networking.ProductImage] {
         let image1 = ProductImage(imageID: 19,
-                                  dateCreated: date(with: "2018-01-26T21:49:45"),
-                                  dateModified: date(with: "2018-01-26T21:50:11"),
+                                  dateCreated: DateFormatter.dateFromString(with: "2018-01-26T21:49:45"),
+                                  dateModified: DateFormatter.dateFromString(with: "2018-01-26T21:50:11"),
                                   src: "https://somewebsite.com/thuy-nonjtpk.mystagingwebsite.com/wp-content/uploads/2018/01/vneck-tee.jpg.png",
                                   name: "Vneck Tshirt",
                                   alt: "")
@@ -629,12 +798,5 @@ private extension ProductsRemoteTests {
         let defaultAttribute2 = ProductDefaultAttribute(attributeID: 0, name: "Size", option: "Medium")
 
         return [defaultAttribute1, defaultAttribute2]
-    }
-
-    func date(with dateString: String) -> Date {
-        guard let date = DateFormatter.Defaults.dateTimeFormatter.date(from: dateString) else {
-            return Date()
-        }
-        return date
     }
 }

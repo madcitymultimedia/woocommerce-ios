@@ -8,7 +8,17 @@ public enum ProductAction: Action {
 
     /// Searches products that contain a given keyword.
     ///
-    case searchProducts(siteID: Int64, keyword: String, pageNumber: Int, pageSize: Int, excludedProductIDs: [Int64] = [], onCompletion: (Error?) -> Void)
+    case searchProducts(siteID: Int64,
+                        keyword: String,
+                        filter: ProductSearchFilter = .all,
+                        pageNumber: Int,
+                        pageSize: Int,
+                        stockStatus: ProductStockStatus? = nil,
+                        productStatus: ProductStatus? = nil,
+                        productType: ProductType? = nil,
+                        productCategory: ProductCategory? = nil,
+                        excludedProductIDs: [Int64] = [],
+                        onCompletion: (Result<Void, Error>) -> Void)
 
     /// Synchronizes the Products matching the specified criteria.
     ///
@@ -20,6 +30,7 @@ public enum ProductAction: Action {
         stockStatus: ProductStockStatus?,
         productStatus: ProductStatus?,
         productType: ProductType?,
+        productCategory: ProductCategory?,
         sortOrder: ProductsSortOrder,
         excludedProductIDs: [Int64] = [],
         shouldDeleteStoredProductsOnFirstPage: Bool = true,
@@ -60,7 +71,28 @@ public enum ProductAction: Action {
     ///
     case updateProduct(product: Product, onCompletion: (Result<Product, ProductUpdateError>) -> Void)
 
+    /// Updates a specified Product's images.
+    ///
+    case updateProductImages(siteID: Int64, productID: Int64, images: [ProductImage], onCompletion: (Result<Product, ProductUpdateError>) -> Void)
+
+    /// Updates specified Products.
+    ///
+    case updateProducts(siteID: Int64, products: [Product], onCompletion: (Result<[Product], ProductUpdateError>) -> Void)
+
     /// Checks whether a Product SKU is valid against other Products in the store.
     ///
     case validateProductSKU(_ sku: String?, siteID: Int64, onCompletion: (Bool) -> Void)
+
+    /// Upserts a product in our local storage
+    ///
+    case replaceProductLocally(product: Product, onCompletion: () -> Void)
+
+    /// Checks if the store is eligible for products onboarding.
+    /// Returns `true` if the store has no products.
+    ///
+    case checkProductsOnboardingEligibility(siteID: Int64, onCompletion: (Result<Bool, Error>) -> Void)
+
+    /// Creates a product using the provided template type.
+    ///
+    case createTemplateProduct(siteID: Int64, template: ProductsRemote.TemplateType, onCompletion: (Result<Product, Error>) -> Void)
 }

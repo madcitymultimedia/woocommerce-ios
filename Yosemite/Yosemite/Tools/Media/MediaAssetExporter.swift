@@ -50,7 +50,7 @@ final class MediaAssetExporter: MediaExporter {
         if let resource = resources.first {
             resourceAvailableLocally = true
             filename = resource.originalFilename
-            if UTTypeEqual(resource.uniformTypeIdentifier as CFString, kUTTypeGIF) {
+            if resource.uniformTypeIdentifier == UTType.gif.identifier {
                 // Handles GIF export differently from images.
                 exportGIF(forAsset: asset, resource: resource, onCompletion: onCompletion)
                 return
@@ -108,12 +108,11 @@ private extension MediaAssetExporter {
         }
 
         guard allowableFileExtensions.isEmpty == false,
-            let extensionType = UTTypeCopyPreferredTagWithClass(uti as CFString, kUTTagClassFilenameExtension)?.takeRetainedValue() as String?
-            else {
+              let fileExtensionForType = URL.fileExtensionForUTType(uti) else {
                 return nil
         }
-        guard allowableFileExtensions.contains(extensionType) else {
-            return kUTTypeJPEG as String
+        guard allowableFileExtensions.contains(fileExtensionForType) else {
+            return UTType.jpeg.identifier
         }
         return uti
     }
@@ -124,7 +123,7 @@ private extension MediaAssetExporter {
     /// - parameter onError: Called if an error was encountered during export.
     ///
     private func exportGIF(forAsset asset: PHAsset, resource: PHAssetResource, onCompletion: @escaping MediaExportCompletion) {
-        guard UTTypeEqual(resource.uniformTypeIdentifier as CFString, kUTTypeGIF) else {
+        guard resource.uniformTypeIdentifier == UTType.gif.identifier else {
             onCompletion(nil, AssetExportError.expectedPHAssetGIFType)
             return
         }

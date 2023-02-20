@@ -1,7 +1,7 @@
 import UIKit
 import Gridicons
 
-/// A table view cell that containt an icon and a text view.
+/// A table view cell that contains an icon and a text view.
 ///
 final class TextViewTableViewCell: UITableViewCell {
     struct ViewModel {
@@ -37,7 +37,7 @@ final class TextViewTableViewCell: UITableViewCell {
         }
         set {
             noteIconButton.setImage(newValue, for: .normal)
-            noteIconButton.tintColor = .listForeground
+            noteIconButton.tintColor = .listForeground(modal: false)
             noteIconButton.layer.cornerRadius = noteIconButton.frame.width / 2
             noteIconView.isHidden = newValue == nil
         }
@@ -128,6 +128,6 @@ private extension TextViewTableViewCell {
     }
 
     func configureTextView() {
-        noteTextView.backgroundColor = .listForeground
+        noteTextView.backgroundColor = .listForeground(modal: false)
     }
 }

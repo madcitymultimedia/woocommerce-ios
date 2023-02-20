@@ -14,12 +14,24 @@
       location = "group:Networking/Networking.xcodeproj">
    </FileRef>
    <FileRef
-      location = "group:Observables">
+      location = "group:Experiments/Experiments.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Hardware/Hardware.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:Fakes/Fakes.xcodeproj">
    </FileRef>
    <FileRef
       location = "group:TestKit">
    </FileRef>
    <FileRef
+      location = "group:CodeGeneration">
+   </FileRef>
+   <FileRef
       location = "group:Pods/Pods.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:WooFoundation/WooFoundation.xcodeproj">
    </FileRef>
 </Workspace>

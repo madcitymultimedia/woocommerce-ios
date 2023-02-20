@@ -9,13 +9,8 @@ private extension ProductFormSection.SettingsRow.ViewModel {
                                                            image: icon,
                                                            imageTintColor: tintColor ?? .textSubtle,
                                                            numberOfLinesForText: numberOfLinesForDetails,
-                                                           isActionable: isActionable)
-    }
-}
-
-private extension ProductFormSection.SettingsRow.WarningViewModel {
-    func toCellViewModel() -> ImageAndTitleAndTextTableViewCell.WarningViewModel {
-        return ImageAndTitleAndTextTableViewCell.WarningViewModel(icon: icon, title: title)
+                                                           isActionable: isActionable,
+                                                           showsSeparator: !hideSeparator)
     }
 }
 
@@ -29,6 +24,9 @@ final class ProductFormTableViewDataSource: NSObject {
 
     private let productImageStatuses: [ProductImageStatus]
     private let productUIImageLoader: ProductUIImageLoader
+
+    var openLinkedProductsAction: (() -> Void)?
+    var reloadLinkedPromoAction: (() -> Void)?
 
     init(viewModel: ProductFormTableViewModel,
          productImageStatuses: [ProductImageStatus],
@@ -86,18 +84,19 @@ private extension ProductFormTableViewDataSource {
 private extension ProductFormTableViewDataSource {
     func configureCellInPrimaryFieldsSection(_ cell: UITableViewCell, row: ProductFormSection.PrimaryFieldRow) {
         switch row {
-        case .images(let editable):
-            configureImages(cell: cell, isEditable: editable)
-        case .name(let name, let editable):
-            configureName(cell: cell, name: name, isEditable: editable)
+        case .images(let editable, let allowsMultipleImages, let isVariation):
+            configureImages(cell: cell, isEditable: editable, allowsMultipleImages: allowsMultipleImages, isVariation: isVariation)
+        case .linkedProductsPromo(let viewModel):
+            configureLinkedProductsPromo(cell: cell, viewModel: viewModel)
+        case .name(let name, let editable, let productStatus):
+            configureName(cell: cell, name: name, isEditable: editable, productStatus: productStatus)
         case .variationName(let name):
             configureReadonlyName(cell: cell, name: name)
         case .description(let description, let editable):
             configureDescription(cell: cell, description: description, isEditable: editable)
         }
     }
-
-    func configureImages(cell: UITableViewCell, isEditable: Bool) {
+    func configureImages(cell: UITableViewCell, isEditable: Bool, allowsMultipleImages: Bool, isVariation: Bool) {
         guard let cell = cell as? ProductImagesHeaderTableViewCell else {
             fatalError()
         }
@@ -115,14 +114,18 @@ private extension ProductFormTableViewDataSource {
                            productUIImageLoader: productUIImageLoader)
             return
         }
-
         if productImageStatuses.count > 0 {
-            cell.configure(with: productImageStatuses, config: .addImages, productUIImageLoader: productUIImageLoader)
+            if allowsMultipleImages {
+                cell.configure(with: productImageStatuses,
+                               config: .addImages,
+                               productUIImageLoader: productUIImageLoader)
+            } else {
+                cell.configure(with: productImageStatuses, config: .images, productUIImageLoader: productUIImageLoader)
+            }
         }
         else {
-            cell.configure(with: productImageStatuses, config: .extendedAddImages, productUIImageLoader: productUIImageLoader)
+            cell.configure(with: productImageStatuses, config: .extendedAddImages(isVariation: isVariation), productUIImageLoader: productUIImageLoader)
         }
-
         cell.onImageSelected = { [weak self] (productImage, indexPath) in
             self?.onAddImage?()
         }
@@ -130,34 +133,31 @@ private extension ProductFormTableViewDataSource {
             self?.onAddImage?()
         }
     }
-
-    func configureName(cell: UITableViewCell, name: String?, isEditable: Bool) {
+    func configureName(cell: UITableViewCell, name: String?, isEditable: Bool, productStatus: ProductStatus) {
         if isEditable {
-            configureEditableName(cell: cell, name: name)
+            configureEditableName(cell: cell, name: name, productStatus: productStatus)
         } else {
             configureReadonlyName(cell: cell, name: name ?? "")
         }
     }
 
-    func configureEditableName(cell: UITableViewCell, name: String?) {
-        guard let cell = cell as? TextViewTableViewCell else {
+    func configureEditableName(cell: UITableViewCell, name: String?, productStatus: ProductStatus) {
+        guard let cell = cell as? LabeledTextViewTableViewCell else {
             fatalError()
         }
 
         cell.accessoryType = .none
+        cell.accessibilityIdentifier = "product-title"
 
         let placeholder = NSLocalizedString("Title", comment: "Placeholder in the Product Title row on Product form screen.")
 
-        let cellViewModel = TextViewTableViewCell.ViewModel(text: name,
-                                                            placeholder: placeholder,
-                                                            textViewMinimumHeight: 10.0,
-                                                            isScrollEnabled: false,
-                                                            onTextChange: { [weak self] (newName) in
-            self?.onNameChange?(newName)
-            },
-                                                            style: .headline,
-                                                            edgeInsets: UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0))
-
+        let cellViewModel = LabeledTextViewTableViewCell.ViewModel(text: name,
+                                                                   productStatus: productStatus,
+                                                                   placeholder: placeholder,
+                                                                   textViewMinimumHeight: 10.0,
+                                                                   isScrollEnabled: false,
+                                                                   onNameChange: { [weak self] (newName) in self?.onNameChange?(newName) },
+                                                                   style: .headline)
         cell.configure(with: cellViewModel)
         cell.accessibilityLabel = NSLocalizedString(
             "Title of the product",
@@ -194,10 +194,29 @@ private extension ProductFormTableViewDataSource {
             cell.textLabel?.text = placeholder
             cell.textLabel?.applyBodyStyle()
             cell.textLabel?.textColor = .textSubtle
+            cell.accessibilityIdentifier = "product-description"
         }
         if isEditable {
             cell.accessoryType = .disclosureIndicator
         }
+    }
+
+    func configureLinkedProductsPromo(cell: UITableViewCell, viewModel: FeatureAnnouncementCardViewModel) {
+        guard let cell = cell as? FeatureAnnouncementCardCell else {
+            fatalError()
+        }
+
+        cell.configure(with: viewModel)
+
+        cell.dismiss = { [weak self] in
+            self?.reloadLinkedPromoAction?()
+        }
+        cell.callToAction = { [weak self] in
+            self?.openLinkedProductsAction?()
+        }
+
+        cell.selectionStyle = .none
+        cell.hideSeparator()
     }
 }
 
@@ -210,15 +229,17 @@ private extension ProductFormTableViewDataSource {
              .inventory(let viewModel, _),
              .productType(let viewModel, _),
              .shipping(let viewModel, _),
+             .addOns(let viewModel, _),
              .categories(let viewModel, _),
              .tags(let viewModel, _),
              .shortDescription(let viewModel, _),
              .externalURL(let viewModel, _),
              .sku(let viewModel, _),
              .groupedProducts(let viewModel, _),
-             .downloadableFiles(let viewModel),
+             .downloadableFiles(let viewModel, _),
              .linkedProducts(let viewModel, _),
-             .variations(let viewModel):
+             .variations(let viewModel),
+             .attributes(let viewModel, _):
             configureSettings(cell: cell, viewModel: viewModel)
         case .reviews(let viewModel, let ratingCount, let averageRating):
             configureReviews(cell: cell, viewModel: viewModel, ratingCount: ratingCount, averageRating: averageRating)
@@ -250,6 +271,7 @@ private extension ProductFormTableViewDataSource {
                        ratingCount: ratingCount,
                        averageRating: averageRating)
         cell.accessoryType = .disclosureIndicator
+        cell.accessibilityIdentifier = "product-review-cell"
     }
 
     func configureSettingsRowWithASwitch(cell: UITableViewCell, viewModel: ProductFormSection.SettingsRow.SwitchableViewModel) {
@@ -269,6 +291,11 @@ private extension ProductFormTableViewDataSource {
         guard let cell = warningCell as? ImageAndTitleAndTextTableViewCell else {
             fatalError("Unexpected cell type \(warningCell) for view model: \(viewModel)")
         }
-        cell.updateUI(warningViewModel: viewModel.toCellViewModel())
+        cell.update(with: .warning,
+                    data: .init(title: viewModel.title,
+                                image: viewModel.icon,
+                                numberOfLinesForTitle: 0,
+                                isActionable: false,
+                                showsSeparator: false))
     }
 }

@@ -1,9 +1,9 @@
 import Foundation
-
+import Codegen
 
 /// Represents a ProductImage entity.
 ///
-public struct ProductImage: Codable, GeneratedCopiable {
+public struct ProductImage: Codable, Equatable, GeneratedCopiable, GeneratedFakeable {
     public let imageID: Int64
     public let dateCreated: Date    // gmt
     public let dateModified: Date?  // gmt
@@ -37,7 +37,14 @@ public struct ProductImage: Codable, GeneratedCopiable {
         let dateModified = try container.decodeIfPresent(Date.self, forKey: .dateModified)
         let src = try container.decode(String.self, forKey: .src)
         let name = try container.decodeIfPresent(String.self, forKey: .name)
-        let alt = try container.decodeIfPresent(String.self, forKey: .alt)
+        let alt: String? = {
+            do {
+                return try container.decodeIfPresent(String.self, forKey: .alt)
+            } catch {
+                DDLogError("⛔️ Error parsing `alt` for ProductImage ID \(imageID): \(error)")
+                return nil
+            }
+        }()
 
         self.init(imageID: imageID,
                   dateCreated: dateCreated,
@@ -59,25 +66,5 @@ private extension ProductImage {
         case src            = "src"
         case name           = "name"
         case alt            = "alt"
-    }
-}
-
-
-// MARK: - Comparable Conformance
-//
-extension ProductImage: Comparable {
-    public static func == (lhs: ProductImage, rhs: ProductImage) -> Bool {
-        return lhs.imageID == rhs.imageID &&
-            lhs.dateCreated == rhs.dateCreated &&
-            lhs.dateModified == rhs.dateModified &&
-            lhs.src == rhs.src &&
-            lhs.name == rhs.name &&
-            lhs.alt == rhs.alt
-    }
-
-    public static func < (lhs: ProductImage, rhs: ProductImage) -> Bool {
-        return lhs.imageID < rhs.imageID ||
-            (lhs.imageID == rhs.imageID && lhs.dateCreated < rhs.dateCreated) ||
-            (lhs.imageID == rhs.imageID && lhs.dateCreated == rhs.dateCreated && lhs.src < rhs.src)
     }
 }

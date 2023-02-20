@@ -25,22 +25,28 @@ At the time of writing this document, these are the subclasses of `Remote`:
 * `ShipmentsRemote` All things Shipment Tracking, from tracking providers to actual tracking associated to an order
 * `SiteAPIRemote` Loads the API information associated to a site.
 * `SiteSettingsRemote` Loads a site’s settings
-* `SiteVisitStatsremote` fetches visitor stats for a given site
+* `SiteStatsremote` fetches Jetpack stats for a given site
 * `TaxClassesRemote` fetches tax classes for a given site.
 * `TopEarnersStatsRemote`fetches the top earner stats for a given site.
 
 ## [`Network`](../Networking/Networking/Network/Network.swift)
 A protocol that abstracts the networking stack. 
 
-There are two implementations of this protocol: [`AlamofireNetwork`](../Networking/Networking/Network/AlamofireNetwork.swift) which manages a networking stack based on the third party library [Alamofire](https://github.com/Alamofire), and [`MockNetwork`](../Networking/Networking/Network/MockNetwork.swift) which is a mock networking stack that does not actually hit the network, to be used in the unit tests.
+There are three implementations of this protocol:
+* [`AlamofireNetwork`](../Networking/Networking/Network/AlamofireNetwork.swift) manages a networking stack based on the third party library [Alamofire](https://github.com/Alamofire). This is the default stack used for API requests in the app that require authentication with WordPress.com.
+* [`WordPressOrgNetwork`](../Networking/Networking/Network/WordPressOrgNetwork.swift) also uses Alamofire to manage network requests, but with cookie-based authentication for working with the WordPress.org REST API.
+* [`MockNetwork`](../Networking/Networking/Network/MockNetwork.swift): a mock networking stack that does not actually hit the network, to be used in the unit tests.
 
 ## `URLRequestConvertible`
 A protocol the abstracts the actual URL requests. 
 
-At the moment, we provide three implementations of `URLRequestConvertible`:
+At the moment, we provide four implementations of `URLRequestConvertible`:
 * [`DotcomRequest`](../Networking/Networking/Requests/DotcomRequest.swift) models requests to WordPress.com
 * [`JetpackRequest`](../Networking/Networking/Requests/JetpackRequest.swift) represents a Jetpack-Tunneled WordPress.com 
-* [`AuthenticatedRequest`](../Networking/Networking/Requests/AuthenticatedRequest.swift) Wraps up a `URLRequestConvertible` instance, and injects credentials (username and token) when required
+* [`RESTRequest`](../Networking/Networking/Requests/RESTRequest.swift) represents a REST API request sent to the site (instead of through the Jetpack tunnel) directly.  
+* [`AuthenticatedDotcomRequest`](../Networking/Networking/Requests/AuthenticatedDotcomRequest.swift) Wraps up a `URLRequestConvertible` instance, and injects WordPress.com authentication token.
+* [`AuthenticatedRESTRequest`](../Networking/Networking/Requests/AuthenticatedRESTRequest.swift) Wraps up a `URLRequestConvertible` instance, and injects application password.
+* [`UnauthenticatedRequest`](../Networking/Networking/Requests/UnauthenticatedRequest.swift) Wraps up a `URLRequestConvertible` instance, and injects a custom user-agent header
 
 ## [`Mapper`](../Networking/Networking/Mapper/Mapper.swift)
 A protocol that abstracts the different parsers.
@@ -52,7 +58,7 @@ Mappers receive an instance of `Data` and return  the result of parsing that dat
 ## Model objects
 Model objects declared in `Networking` are immutable, and modelled as value types (structs) that typically implement `Decodable`.
 
-Model objects should implement `Comparable`.
+Model objects should conform to `GeneratedFakeable` and `GeneratedCopiable`. [Fakeable](fakeable.md) and [Copiable](copiable.md) methods should be generated automatically with `rake generate`.
 
 ## Unit tests
 As mentioned previously, there is an implementation of the `Network` protocol called [`MockNetwork`](../Networking/Networking/Network/MockNetwork.swift) used to mock network requests in the unit tests. This way we prevent the tests from hitting the actual network.

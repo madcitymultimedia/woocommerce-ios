@@ -1,46 +1,51 @@
+import Combine
 import Photos
 import XCTest
-import Observables
+import Fakes
 
 @testable import WooCommerce
+@testable import Storage
 import Yosemite
 
 /// Unit tests for observables (`observableProduct`, `productName`, `isUpdateEnabled`)
 final class ProductFormViewModel_ObservablesTests: XCTestCase {
     private let defaultSiteID: Int64 = 134
-    private var cancellableProduct: ObservationToken?
-    private var cancellableProductName: ObservationToken?
-    private var cancellableUpdateEnabled: ObservationToken?
+    private var productSubscription: AnyCancellable?
+    private var productNameSubscription: AnyCancellable?
+    private var updateEnabledSubscription: AnyCancellable?
+    private var variationPriceSubscription: AnyCancellable?
+
 
     override func tearDown() {
-        [cancellableProduct, cancellableProductName, cancellableUpdateEnabled].forEach { cancellable in
+        [productSubscription, productNameSubscription, updateEnabledSubscription, variationPriceSubscription].forEach { cancellable in
             cancellable?.cancel()
         }
-        cancellableProduct = nil
-        cancellableProductName = nil
-        cancellableUpdateEnabled = nil
+        productSubscription = nil
+        productNameSubscription = nil
+        updateEnabledSubscription = nil
+        variationPriceSubscription = nil
 
         super.tearDown()
     }
 
     func testObservablesFromEditActionsOfTheSameData() {
         // Arrange
-        let product = MockProduct().product(downloadable: true)
+        let product = Fakes.ProductFactory.productWithEditableDataFilled()
         let model = EditableProductModel(product: product)
         let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
         let viewModel = ProductFormViewModel(product: model,
                                              formType: .edit,
                                              productImageActionHandler: productImageActionHandler)
         let taxClass = TaxClass(siteID: product.siteID, name: "standard", slug: product.taxClass ?? "standard")
-        cancellableProduct = viewModel.observableProduct.subscribe { _ in
+        productSubscription = viewModel.observableProduct.sink { _ in
             // Assert
             XCTFail("Should not be triggered from edit actions of the same data")
         }
-        cancellableProductName = viewModel.productName?.subscribe { _ in
+        productNameSubscription = viewModel.productName?.sink { _ in
             // Assert
             XCTFail("Should not be triggered from edit actions of the same data")
         }
-        cancellableUpdateEnabled = viewModel.isUpdateEnabled.subscribe { _ in
+        updateEnabledSubscription = viewModel.isUpdateEnabled.sink { _ in
             // Assert
             XCTFail("Should not be triggered from edit actions of the same data")
         }
@@ -76,21 +81,21 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
     /// When only product name is updated, the product name observable should be triggered but no the product observable.
     func testObservablesFromEditingProductName() {
         // Arrange
-        let product = MockProduct().product()
+        let product = Product.fake()
         let model = EditableProductModel(product: product)
         let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
         let viewModel = ProductFormViewModel(product: model,
                                              formType: .edit,
                                              productImageActionHandler: productImageActionHandler)
         var isProductUpdated: Bool?
-        cancellableProduct = viewModel.observableProduct.subscribe { product in
+        productSubscription = viewModel.observableProduct.sink { product in
             isProductUpdated = true
         }
 
         var updatedProductName: String?
         let expectationForProductName = self.expectation(description: "Product name updates")
         expectationForProductName.expectedFulfillmentCount = 1
-        cancellableProductName = viewModel.productName?.subscribe { productName in
+        productNameSubscription = viewModel.productName?.sink { productName in
             updatedProductName = productName
             expectationForProductName.fulfill()
         }
@@ -98,7 +103,7 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
         var updatedUpdateEnabled: Bool?
         let expectationForUpdateEnabled = self.expectation(description: "Update enabled updates")
         expectationForUpdateEnabled.expectedFulfillmentCount = 1
-        cancellableUpdateEnabled = viewModel.isUpdateEnabled.subscribe { isUpdateEnabled in
+        updateEnabledSubscription = viewModel.isUpdateEnabled.sink { isUpdateEnabled in
             updatedUpdateEnabled = isUpdateEnabled
             expectationForUpdateEnabled.fulfill()
         }
@@ -117,26 +122,26 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
     /// When only product password is updated, only the update enabled boolean should be triggered.
     func testObservablesFromEditingProductPassword() {
         // Arrange
-        let product = MockProduct().product()
+        let product = Product.fake()
         let model = EditableProductModel(product: product)
         let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
         let viewModel = ProductFormViewModel(product: model,
                                              formType: .edit,
                                              productImageActionHandler: productImageActionHandler)
         var isProductUpdated: Bool?
-        cancellableProduct = viewModel.observableProduct.subscribe { product in
+        productSubscription = viewModel.observableProduct.sink { product in
             isProductUpdated = true
         }
 
         var updatedProductName: String?
-        cancellableProductName = viewModel.productName?.subscribe { productName in
+        productNameSubscription = viewModel.productName?.sink { productName in
             updatedProductName = productName
         }
 
         var updatedUpdateEnabled: Bool?
         let expectationForUpdateEnabled = self.expectation(description: "Update enabled updates")
         expectationForUpdateEnabled.expectedFulfillmentCount = 1
-        cancellableUpdateEnabled = viewModel.isUpdateEnabled.subscribe { isUpdateEnabled in
+        updateEnabledSubscription = viewModel.isUpdateEnabled.sink { isUpdateEnabled in
             updatedUpdateEnabled = isUpdateEnabled
             expectationForUpdateEnabled.fulfill()
         }
@@ -154,7 +159,7 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
 
     func testObservablesFromUpdatingProductPasswordRemotely() {
         // Arrange
-        let product = MockProduct().product()
+        let product = Product.fake().copy(productID: 123)
         let model = EditableProductModel(product: product)
         let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
         let viewModel = ProductFormViewModel(product: model,
@@ -164,12 +169,12 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
         viewModel.resetPassword("134")
 
         var isProductUpdated: Bool?
-        cancellableProduct = viewModel.observableProduct.subscribe { product in
+        productSubscription = viewModel.observableProduct.sink { product in
             isProductUpdated = true
         }
 
         var updatedProductName: String?
-        cancellableProductName = viewModel.productName?.subscribe { productName in
+        productNameSubscription = viewModel.productName?.sink { productName in
             updatedProductName = productName
         }
 
@@ -178,7 +183,7 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
         expectationForUpdateEnabled.expectedFulfillmentCount = 2
         // The update enabled boolean should be set to true from the password change, and then back to false after resetting with
         // the same password after remote update.
-        cancellableUpdateEnabled = viewModel.isUpdateEnabled.subscribe { isUpdateEnabled in
+        updateEnabledSubscription = viewModel.isUpdateEnabled.sink { isUpdateEnabled in
             updatedUpdateEnabled = isUpdateEnabled
             expectationForUpdateEnabled.fulfill()
         }
@@ -196,39 +201,99 @@ final class ProductFormViewModel_ObservablesTests: XCTestCase {
         XCTAssertEqual(updatedUpdateEnabled, false)
     }
 
-    func testObservablesFromUploadingAnImage() {
-        // Arrange
-        let product = MockProduct().product()
+    func test_observables_when_productImageActionHandler_uploads_media_asset_then_observables_are_called() {
+        // Given
+        let product = Product.fake()
         let model = EditableProductModel(product: product)
         let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
+        let mockProductImageUploader = MockProductImageUploader()
+        mockProductImageUploader.whenHasUnsavedChangesOnImagesIsCalled(thenReturn: true)
         let viewModel = ProductFormViewModel(product: model,
                                              formType: .edit,
-                                             productImageActionHandler: productImageActionHandler)
+                                             productImageActionHandler: productImageActionHandler,
+                                             productImagesUploader: mockProductImageUploader)
         var isProductUpdated: Bool?
-        cancellableProduct = viewModel.observableProduct.subscribe { product in
+        productSubscription = viewModel.observableProduct.sink { product in
             isProductUpdated = true
         }
 
         var updatedProductName: String?
-        cancellableProductName = viewModel.productName?.subscribe { productName in
+        productNameSubscription = viewModel.productName?.sink { productName in
             updatedProductName = productName
         }
 
         var updatedUpdateEnabled: Bool?
         let expectationForUpdateEnabled = self.expectation(description: "Update enabled updates")
         expectationForUpdateEnabled.expectedFulfillmentCount = 1
-        cancellableUpdateEnabled = viewModel.isUpdateEnabled.subscribe { isUpdateEnabled in
+        // Emits a boolean of whether the product has unsaved changes for remote update
+        updateEnabledSubscription = viewModel.isUpdateEnabled.sink {
+            isUpdateEnabled in
             updatedUpdateEnabled = isUpdateEnabled
             expectationForUpdateEnabled.fulfill()
         }
 
-        // Action
+        // When
         productImageActionHandler.uploadMediaAssetToSiteMediaLibrary(asset: PHAsset())
 
-        // Assert
+        // Then
         waitForExpectations(timeout: Constants.expectationTimeout, handler: nil)
         XCTAssertNil(isProductUpdated)
         XCTAssertNil(updatedProductName)
         XCTAssertEqual(updatedUpdateEnabled, true)
+    }
+
+    func test_adding_variation_price_triggers_a_price_update_and_removes_noPriceWarning_action() {
+        // Given
+        let mockStorage = MockStorageManager()
+        let productID: Int64 = 123
+        let variationID: Int64 = 256
+        let product = Product.fake().copy(siteID: defaultSiteID, productID: productID, productTypeKey: ProductType.variable.rawValue, variations: [variationID])
+        let model = EditableProductModel(product: product)
+        let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
+        let viewModel = ProductFormViewModel(product: model, formType: .edit, productImageActionHandler: productImageActionHandler, storageManager: mockStorage)
+
+        XCTAssertTrue(viewModel.actionsFactory.settingsSectionActions().contains(.noPriceWarning))
+
+        // When
+        let priceUpdated: Bool = waitFor { promise in
+            self.variationPriceSubscription = viewModel.newVariationsPrice.sink { promise(true) }
+
+            let newVariation = ProductVariation.fake().copy(siteID: self.defaultSiteID, productID: productID,
+                                                            productVariationID: variationID,
+                                                            regularPrice: "10.2")
+            mockStorage.insertSampleProductVariation(readOnlyProductVariation: newVariation, on: product)
+        }
+
+        // Then
+        XCTAssertTrue(priceUpdated)
+        XCTAssertFalse(viewModel.actionsFactory.settingsSectionActions().contains(.noPriceWarning))
+    }
+
+    func test_removing_variation_price_triggers_a_price_update_and_adds_noPriceWarning_action() {
+        // Given
+        let productID: Int64 = 123
+        let product = Product.fake().copy(siteID: defaultSiteID, productID: productID, productTypeKey: ProductType.variable.rawValue)
+
+        let variation = ProductVariation.fake().copy(siteID: self.defaultSiteID, productID: productID, productVariationID: 234, regularPrice: "10.2")
+        let mockStorage = MockStorageManager()
+        mockStorage.insertSampleProductVariation(readOnlyProductVariation: variation, on: product)
+
+        let model = EditableProductModel(product: product)
+        let productImageActionHandler = ProductImageActionHandler(siteID: defaultSiteID, product: model)
+        let viewModel = ProductFormViewModel(product: model, formType: .edit, productImageActionHandler: productImageActionHandler, storageManager: mockStorage)
+
+        XCTAssertFalse(viewModel.actionsFactory.settingsSectionActions().contains(.noPriceWarning))
+
+        // When
+        let priceUpdated: Bool = waitFor { promise in
+            self.variationPriceSubscription = viewModel.newVariationsPrice.sink { promise(true) }
+
+            let newVariation = variation.copy(regularPrice: "")
+            mockStorage.insertSampleProductVariation(readOnlyProductVariation: newVariation, on: product)
+        }
+
+        // Then
+        XCTAssertTrue(priceUpdated)
+        XCTAssertTrue(viewModel.actionsFactory.settingsSectionActions().contains(.noPriceWarning))
     }
 }

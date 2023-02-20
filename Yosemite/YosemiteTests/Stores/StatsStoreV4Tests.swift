@@ -41,68 +41,78 @@ final class StatsStoreV4Tests: XCTestCase {
 
     /// Verifies that `StatsActionV4.retrieveStats` effectively persists any retrieved OrderStatsV4.
     ///
-    func testRetrieveStatsEffectivelyPersistsRetrievedStats() {
-        let expectation = self.expectation(description: "Persist order stats")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveStats_effectively_persists_retrieved_stats() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         network.simulateResponse(requestUrlSuffix: "reports/revenue/stats", filename: "order-stats-v4-year")
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderStatsV4.self), 0)
 
-        let action = StatsActionV4.retrieveStats(siteID: sampleSiteID,
-                                                 timeRange: .thisYear,
-                                                 earliestDateToInclude: date(with: "2018-06-23T17:06:55"),
-                                                 latestDateToInclude: date(with: "2018-06-23T17:06:55"),
-                                                 quantity: 2) { (error) in
-                                                        XCTAssertNil(error)
-                                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderStatsV4.self), 1)
-                                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.OrderStatsV4Interval.self), 1)
-                                                        let readOnlyOrderStats = self.viewStorage.firstObject(ofType: Storage.OrderStatsV4.self)?.toReadOnly()
-                                                        XCTAssertEqual(readOnlyOrderStats, self.sampleStats())
-
-                                                        expectation.fulfill()
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveStats(siteID: self.sampleSiteID,
+                                                     timeRange: .thisYear,
+                                                     earliestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     latestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     quantity: 2,
+                                                     forceRefresh: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderStatsV4.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.OrderStatsV4Interval.self), 1)
+        let readOnlyOrderStats = viewStorage.firstObject(ofType: Storage.OrderStatsV4.self)?.toReadOnly()
+        assertEqual(sampleStats(), readOnlyOrderStats)
     }
 
     /// Verifies that `StatsActionV4.retrieveStats` returns an error whenever there is an error response from the backend.
     ///
-    func testRetrieveOrderReturnsErrorUponReponseError() {
-        let expectation = self.expectation(description: "Retrieve order stats error response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveStats_returns_error_upon_reponse_error() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         network.simulateResponse(requestUrlSuffix: "reports/revenue/stats", filename: "generic_error")
-        let action = StatsActionV4.retrieveStats(siteID: sampleSiteID,
-                                                 timeRange: .thisYear,
-                                                 earliestDateToInclude: date(with: "2018-06-23T17:06:55"),
-                                                 latestDateToInclude: date(with: "2018-06-23T17:06:55"),
-                                                 quantity: 2) { (error) in
-                                                        XCTAssertNotNil(error)
-                                                        expectation.fulfill()
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveStats(siteID: self.sampleSiteID,
+                                                     timeRange: .thisYear,
+                                                     earliestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     latestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     quantity: 2,
+                                                     forceRefresh: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `StatsActionV4.retrieveStats` returns an error whenever there is no backend response.
     ///
-    func testRetrieveStatsReturnsErrorUponEmptyResponse() {
-        let expectation = self.expectation(description: "Retrieve site visit stats empty response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_retrieveStats_returns_error_upon_empty_response() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
-        let action = StatsActionV4.retrieveStats(siteID: sampleSiteID, timeRange: .thisYear,
-                                                 earliestDateToInclude: date(with: "2018-06-23T17:06:55"),
-
-                                                 latestDateToInclude: date(with: "2018-06-23T17:06:55"),
-                                                 quantity: 2) { (error) in
-                                                        XCTAssertNotNil(error)
-                                                        expectation.fulfill()
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveStats(siteID: self.sampleSiteID,
+                                                     timeRange: .thisYear,
+                                                     earliestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     latestDateToInclude: DateFormatter.dateFromString(with: "2018-06-23T17:06:55"),
+                                                     quantity: 2,
+                                                     forceRefresh: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     // MARK: - StatsActionV4.retrieveSiteVisitStats
@@ -110,126 +120,134 @@ final class StatsStoreV4Tests: XCTestCase {
 
     /// Verifies that `StatsActionV4.retrieveSiteVisitStats` effectively persists any retrieved SiteVisitStats.
     ///
-    func testRetrieveSiteVisitStatsEffectivelyPersistsRetrievedStats() {
-        let expectation = self.expectation(description: "Persist site visit stats")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveSiteVisitStats_effectively_persists_retrieved_stats() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/visits/", filename: "site-visits")
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 0)
 
-        let action = StatsActionV4
-            .retrieveSiteVisitStats(siteID: sampleSiteID,
-                                    siteTimezone: .current,
-                                    timeRange: .thisWeek,
-                                    latestDateToInclude: date(with: "2018-08-06T17:06:55")) { (error) in
-                                        XCTAssertNil(error)
-                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
-                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
-                                        let readOnlySiteVisitStats = self.viewStorage.firstObject(ofType: Storage.SiteVisitStats.self)?.toReadOnly()
-                                        XCTAssertEqual(readOnlySiteVisitStats, self.sampleSiteVisitStats())
-
-                                        expectation.fulfill()
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteVisitStats(siteID: self.sampleSiteID,
+                                                              siteTimezone: .current,
+                                                              timeRange: .thisWeek,
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2018-08-06T17:06:55")) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
+        let readOnlySiteVisitStats = viewStorage.firstObject(ofType: Storage.SiteVisitStats.self)?.toReadOnly()
+        XCTAssertEqual(readOnlySiteVisitStats, sampleSiteVisitStats())
     }
 
     /// Verifies that `StatsActionV4.retrieveSiteVisitStats` effectively persists any updated SiteVisitStatsItems.
     ///
-    func testRetrieveSiteVisitStatsEffectivelyPersistsUpdatedItems() {
-        let expectation = self.expectation(description: "Persist updated site visit stats items")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveSiteVisitStats_effectively_persists_updated_items() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 0)
-        statsStore.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStats())
+        store.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStats(), timeRange: .thisYear)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
-        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
-
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
         network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/visits/", filename: "site-visits-alt")
-        let action = StatsActionV4
-            .retrieveSiteVisitStats(siteID: sampleSiteID,
-                                    siteTimezone: .current,
-                                    timeRange: .thisYear,
-                                    latestDateToInclude: date(with: "2018-08-06T17:06:55")) { (error) in
-                                        XCTAssertNil(error)
-                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
-                                        XCTAssertEqual(self.viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
-                                        let readOnlySiteVisitStats = self.viewStorage.firstObject(ofType: Storage.SiteVisitStats.self)?.toReadOnly()
-                                        XCTAssertEqual(readOnlySiteVisitStats, self.sampleSiteVisitStatsMutated())
 
-                                        expectation.fulfill()
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteVisitStats(siteID: self.sampleSiteID,
+                                                              siteTimezone: .current,
+                                                              timeRange: .thisYear,
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2018-08-06T17:06:55")) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
+        let readOnlySiteVisitStats = viewStorage.firstObject(ofType: Storage.SiteVisitStats.self)?.toReadOnly()
+        XCTAssertEqual(readOnlySiteVisitStats, sampleSiteVisitStatsMutated())
     }
 
     /// Verifies that `StatsActionV4.retrieveSiteVisitStats` returns an error whenever there is an error response from the backend.
     ///
-    func testRetrieveSiteVisitStatsReturnsErrorUponReponseError() {
-        let expectation = self.expectation(description: "Retrieve site visit stats error response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveSiteVisitStats_returns_error_upon_reponse_error() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/visits/", filename: "generic_error")
-        let action = StatsActionV4.retrieveSiteVisitStats(siteID: sampleSiteID,
-                                                          siteTimezone: .current,
-                                                          timeRange: .thisYear,
-                                                          latestDateToInclude: date(with: "2018-08-06T17:06:55")) { (error) in
-                                                            XCTAssertNotNil(error)
-                                                            expectation.fulfill()
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteVisitStats(siteID: self.sampleSiteID,
+                                                              siteTimezone: .current,
+                                                              timeRange: .thisYear,
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2018-08-06T17:06:55")) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `StatsActionV4.retrieveSiteVisitStats` returns an error whenever there is no backend response.
     ///
-    func testRetrieveSiteVisitStatsReturnsErrorUponEmptyResponse() {
-        let expectation = self.expectation(description: "Retrieve site visit stats empty response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_retrieveSiteVisitStats_returns_error_upon_empty_response() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
-        let action = StatsActionV4.retrieveSiteVisitStats(siteID: sampleSiteID,
-                                                          siteTimezone: .current,
-                                                          timeRange: .thisYear,
-                                                          latestDateToInclude: date(with: "2018-08-06T17:06:55")) { (error) in
-                                                            XCTAssertNotNil(error)
-                                                            expectation.fulfill()
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteVisitStats(siteID: self.sampleSiteID,
+                                                              siteTimezone: .current,
+                                                              timeRange: .thisYear,
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2018-08-06T17:06:55")) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `upsertStoredSiteVisitStats` effectively inserts a new SiteVisitStats, with the specified payload.
     ///
-    func testUpsertStoredSiteVisitStatsEffectivelyPersistsNewSiteVisitStats() {
+    func test_upsertStoredSiteVisitStats_effectively_persists_new_SiteVisitStats() {
         let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         let remoteSiteVisitStats = sampleSiteVisitStats()
+        let timeRange = StatsTimeRangeV4.thisYear
 
-        XCTAssertNil(viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue))
-        statsStore.upsertStoredSiteVisitStats(readOnlyStats: remoteSiteVisitStats)
+        XCTAssertNil(viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue, timeRange: timeRange.rawValue))
+        statsStore.upsertStoredSiteVisitStats(readOnlyStats: remoteSiteVisitStats, timeRange: timeRange)
 
-        let storageSiteVisitStats = viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue)
+        let storageSiteVisitStats = viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue, timeRange: timeRange.rawValue)
         XCTAssertEqual(storageSiteVisitStats?.toReadOnly(), remoteSiteVisitStats)
     }
 
     /// Verifies that `upsertStoredSiteVisitStats` does not produce duplicate entries.
     ///
-    func testUpdateStoredSiteVisitStatsEffectivelyUpdatesPreexistantSiteVisitStats() {
+    func test_upsertStoredSiteVisitStats_effectively_updates_preexistant_SiteVisitStats() {
         let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let timeRange = StatsTimeRangeV4.thisYear
 
-        XCTAssertNil(viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue))
-        statsStore.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStats())
+        XCTAssertNil(viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue, timeRange: timeRange.rawValue))
+        statsStore.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStats(), timeRange: timeRange)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
-        statsStore.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStatsMutated())
+        statsStore.upsertStoredSiteVisitStats(readOnlyStats: sampleSiteVisitStatsMutated(), timeRange: timeRange)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStats.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteVisitStatsItem.self), 2)
 
         let expectedSiteVisitStats = sampleSiteVisitStatsMutated()
-        let storageSiteVisitStats = viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue)
+        let storageSiteVisitStats = viewStorage.loadSiteVisitStats(granularity: StatGranularity.year.rawValue, timeRange: timeRange.rawValue)
         XCTAssertEqual(storageSiteVisitStats?.toReadOnly(), expectedSiteVisitStats)
     }
 
@@ -238,28 +256,29 @@ final class StatsStoreV4Tests: XCTestCase {
 
     /// Verifies that `StatsActionV4.retrieveTopEarnerStats` effectively persists any retrieved TopEarnerStats.
     ///
-    func testRetrieveTopEarnersStatsEffectivelyPersistsRetrievedStats() {
+    func test_retrieveTopEarnerStats_effectively_persists_retrieved_stats() {
         // Given
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-        network.simulateResponse(requestUrlSuffix: "leaderboards", filename: "leaderboards-year")
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "leaderboards/products", filename: "leaderboards-year")
         network.simulateResponse(requestUrlSuffix: "products", filename: "leaderboards-products")
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStats.self), 0)
 
         // When
-        var topEarnersError: Error?
-        waitForExpectation { exp in
-            let action = StatsActionV4.retrieveTopEarnerStats(siteID: sampleSiteID,
+        let result: Result<Networking.TopEarnerStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
                                                               timeRange: .thisYear,
-                                                              earliestDateToInclude: date(with: "2020-01-01T00:00:00"),
-                                                              latestDateToInclude: date(with: "2020-07-22T12:00:00")) { error in
-                                                                topEarnersError = error
-                                                                exp.fulfill()
+                                                              earliestDateToInclude: DateFormatter.dateFromString(with: "2020-01-01T00:00:00"),
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2020-07-22T12:00:00"),
+                                                              quantity: 3,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(result)
             }
-            statsStore.onAction(action)
+            store.onAction(action)
         }
 
         // Then
-        XCTAssertNil(topEarnersError)
+        XCTAssertTrue(result.isSuccess)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStats.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStatsItem.self), 2)
 
@@ -267,30 +286,106 @@ final class StatsStoreV4Tests: XCTestCase {
         XCTAssertEqual(readOnlyTopEarnerStats, sampleTopEarnerStats())
     }
 
-    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` effectively persists any updated TopEarnerStatsItems.
+    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` makes a network request with the given quantity parameter.
     ///
-    func testRetrieveTopEarnersStatsEffectivelyPersistsUpdatedItems() {
+    func test_retrieveTopEarnerStats_makes_network_request_with_given_quantity_parameter() {
         // Given
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
-        network.simulateResponse(requestUrlSuffix: "leaderboards", filename: "leaderboards-year-alt")
-        network.simulateResponse(requestUrlSuffix: "products", filename: "leaderboards-products")
-        statsStore.upsertStoredTopEarnerStats(readOnlyStats: sampleTopEarnerStats())
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
         // When
-        var topEarnersError: Error?
-        waitForExpectation { exp in
-            let action = StatsActionV4.retrieveTopEarnerStats(siteID: sampleSiteID,
+        let quantity = 6
+        let _: Void = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
                                                               timeRange: .thisYear,
-                                                              earliestDateToInclude: date(with: "2020-01-01T00:00:00"),
-                                                              latestDateToInclude: date(with: "2020-07-22T12:00:00")) { error in
-                                                                topEarnersError = error
-                                                                exp.fulfill()
+                                                              earliestDateToInclude: DateFormatter.dateFromString(with: "2020-01-01T00:00:00"),
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2020-07-22T12:00:00"),
+                                                              quantity: quantity,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(())
             }
-            statsStore.onAction(action)
+            store.onAction(action)
         }
 
         // Then
-        XCTAssertNil(topEarnersError)
+        let expectedQuantityParam = "per_page=\(quantity)"
+        XCTAssertEqual(network.queryParameters?.contains(expectedQuantityParam), true)
+    }
+
+    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` makes a network request with the given `force_cache_refresh` parameter.
+    ///
+    func test_retrieveTopEarnerStats_makes_network_request_with_given_force_cache_rerefresh_parameter() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        // When
+        let _: Void = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
+                                                              timeRange: .thisYear,
+                                                              earliestDateToInclude: DateFormatter.dateFromString(with: "2020-01-01T00:00:00"),
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2020-07-22T12:00:00"),
+                                                              quantity: 1,
+                                                              forceRefresh: true,
+                                                              saveInStorage: true) { result in
+                promise(())
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        let expectedParam = "force_cache_refresh=1"
+        XCTAssertEqual(network.queryParameters?.contains(expectedParam), true)
+    }
+
+    /// Verifies that `StatsActionV4.retrieveStats` makes a network request with the given `force_cache_refresh` parameter.
+    ///
+    func test_retrieveStats_makes_network_request_with_given_force_cache_rerefresh_parameter() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        // When
+        let _: Void = waitFor { promise in
+            let action = StatsActionV4.retrieveStats(siteID: self.sampleSiteID,
+                                                     timeRange: .thisMonth,
+                                                     earliestDateToInclude: .init(),
+                                                     latestDateToInclude: .init(),
+                                                     quantity: 1,
+                                                     forceRefresh: false) { _ in
+                promise(())
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        let expectedParam = "force_cache_refresh=0"
+        XCTAssertEqual(network.queryParameters?.contains(expectedParam), true)
+    }
+
+    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` effectively persists any updated TopEarnerStatsItems.
+    ///
+    func test_retrieveTopEarnerStats_effectively_persists_updated_items() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "leaderboards/products", filename: "leaderboards-year-alt")
+        network.simulateResponse(requestUrlSuffix: "products", filename: "leaderboards-products")
+        store.upsertStoredTopEarnerStats(readOnlyStats: sampleTopEarnerStats())
+
+        // When
+        let result: Result<Networking.TopEarnerStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
+                                                              timeRange: .thisYear,
+                                                              earliestDateToInclude: DateFormatter.dateFromString(with: "2020-01-01T00:00:00"),
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2020-07-22T12:00:00"),
+                                                              quantity: 3,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStats.self), 1)
         XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStatsItem.self), 2)
 
@@ -298,46 +393,89 @@ final class StatsStoreV4Tests: XCTestCase {
         XCTAssertEqual(readOnlyTopEarnerStats, sampleTopEarnerStatsMutated())
     }
 
-    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` returns an error whenever there is an error response from the backend.
-    ///
-    func testRetrieveTopEarnersStatsReturnsErrorUponReponseError() {
-        let expectation = self.expectation(description: "Retrieve top earner stats error response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_retrieveTopEarnerStats_calls_deprecated_leaderboards_api_and_persits_stats_on_leaderboards_restnoroute_error() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateError(requestUrlSuffix: "leaderboards/products", error: DotcomError.noRestRoute)
+        network.simulateResponse(requestUrlSuffix: "leaderboards", filename: "leaderboards-year")
+        network.simulateResponse(requestUrlSuffix: "products", filename: "leaderboards-products")
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStats.self), 0)
 
-        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/top-earners/", filename: "generic_error")
-        let action = StatsActionV4.retrieveTopEarnerStats(siteID: sampleSiteID,
-                                                          timeRange: .thisMonth,
-                                                          earliestDateToInclude: Date(),
-                                                          latestDateToInclude: Date()) { error in
-            XCTAssertNotNil(error)
-            expectation.fulfill()
+        // When
+        let result: Result<Networking.TopEarnerStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
+                                                              timeRange: .thisYear,
+                                                              earliestDateToInclude: DateFormatter.dateFromString(with: "2020-01-01T00:00:00"),
+                                                              latestDateToInclude: DateFormatter.dateFromString(with: "2020-07-22T12:00:00"),
+                                                              quantity: 3,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStats.self), 1)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.TopEarnerStatsItem.self), 2)
+
+        let readOnlyTopEarnerStats = viewStorage.firstObject(ofType: Storage.TopEarnerStats.self)?.toReadOnly()
+        XCTAssertEqual(readOnlyTopEarnerStats, sampleTopEarnerStats())
+    }
+
+    /// Verifies that `StatsActionV4.retrieveTopEarnerStats` returns an error whenever there is an error response from the backend.
+    ///
+    func test_retrieveTopEarnerStats_returns_error_upon_response_error() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/top-earners/", filename: "generic_error")
+
+        // When
+        let result: Result<Networking.TopEarnerStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
+                                                              timeRange: .thisMonth,
+                                                              earliestDateToInclude: Date(),
+                                                              latestDateToInclude: Date(),
+                                                              quantity: 3,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `StatsActionV4.retrieveTopEarnerStats` returns an error whenever there is no backend response.
     ///
-    func testRetrieveTopEarnersStatsReturnsErrorUponEmptyResponse() {
-        let expectation = self.expectation(description: "Retrieve top earner stats empty response")
-        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_retrieveTopEarnerStats_returns_error_upon_empty_response() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
-        let action = StatsActionV4.retrieveTopEarnerStats(siteID: sampleSiteID,
-                                                          timeRange: .thisMonth,
-                                                          earliestDateToInclude: Date(),
-                                                          latestDateToInclude: Date()) { error in
-            XCTAssertNotNil(error)
-            expectation.fulfill()
+        // When
+        let result: Result<Networking.TopEarnerStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveTopEarnerStats(siteID: self.sampleSiteID,
+                                                              timeRange: .thisMonth,
+                                                              earliestDateToInclude: Date(),
+                                                              latestDateToInclude: Date(),
+                                                              quantity: 3,
+                                                              forceRefresh: false,
+                                                              saveInStorage: true) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        statsStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `upsertStoredTopEarnerStats` effectively inserts a new TopEarnerStats, with the specified payload.
     ///
-    func testUpsertStoredTopEarnersStatsEffectivelyPersistsNewTopEarnersStats() {
+    func test_upsertStoredTopEarnerStats_effectively_persists_new_TopEarnersStats() {
         let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
         let remoteTopEarnersStats = sampleTopEarnerStats()
 
@@ -350,7 +488,7 @@ final class StatsStoreV4Tests: XCTestCase {
 
     /// Verifies that `upsertStoredTopEarnerStats` does not produce duplicate entries.
     ///
-    func testUpdateStoredTopEarnersStatsEffectivelyUpdatesPreexistantTopEarnersStats() {
+    func test_upsertStoredTopEarnerStats_effectively_updates_preexistant_TopEarnersStats() {
         let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
         XCTAssertNil(viewStorage.loadTopEarnerStats(date: "2020", granularity: StatGranularity.week.rawValue))
@@ -365,19 +503,185 @@ final class StatsStoreV4Tests: XCTestCase {
         let storageTopEarnerStats = viewStorage.loadTopEarnerStats(date: "2020", granularity: StatGranularity.year.rawValue)
         XCTAssertEqual(storageTopEarnerStats?.toReadOnly(), expectedTopEarnerStats)
     }
+
+    // MARK: - StatsStoreV4.retrieveSiteSummaryStats
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` returns any retrieved SiteSummaryStats.
+    ///
+    func test_retrieveSiteSummaryStats_returns_retrieved_stats() throws {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/summary/", filename: "site-summary-stats")
+
+        // When
+        let result: Result<Networking.SiteSummaryStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .current,
+                                                                period: .day,
+                                                                quantity: 1,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-09T17:06:55"),
+                                                                saveInStorage: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let siteSummaryStats = try XCTUnwrap(result).get()
+        XCTAssertEqual(siteSummaryStats, sampleSiteSummaryStats())
+    }
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` makes the expected alternate network request for multiple stats periods.
+    ///
+    func test_retrieveSiteSummaryStats_makes_expected_network_request_for_multiple_periods() throws {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        // When
+        let _: Void = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .init(identifier: "GMT") ?? .current,
+                                                                period: .month,
+                                                                quantity: 3,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-31T17:06:55"),
+                                                                saveInStorage: false) { _ in
+                promise(())
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        let request = try XCTUnwrap(network.requestsForResponseData.first as? DotcomRequest)
+        XCTAssertEqual(request.path, "sites/\(sampleSiteID)/stats/visits/")
+        XCTAssertEqual(request.parameters?["date"] as? String, "2022-12-31")
+        XCTAssertEqual(request.parameters?["unit"] as? String, "month")
+        XCTAssertEqual(request.parameters?["quantity"] as? String, "3")
+    }
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` converts and returns SiteSummaryStats for multiple periods.
+    ///
+    func test_retrieveSiteSummaryStats_returns_retrieved_quarter_stats() throws {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/visits/", filename: "site-visits-quarter")
+
+        // When
+        let result: Result<Networking.SiteSummaryStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .current,
+                                                                period: .month,
+                                                                quantity: 3,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-31T17:06:55"),
+                                                                saveInStorage: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let siteSummaryStats = try XCTUnwrap(result).get()
+        XCTAssertEqual(siteSummaryStats, sampleSiteSummaryStatsQuarter())
+    }
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` returns an error whenever there is an error response from the backend.
+    ///
+    func test_retrieveSiteSummaryStats_returns_error_upon_response_error() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/summary/", filename: "generic_error")
+
+        // When
+        let result: Result<Networking.SiteSummaryStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .current,
+                                                                period: .day,
+                                                                quantity: 1,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-09T17:06:55"),
+                                                                saveInStorage: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` returns an error whenever there is no backend response.
+    ///
+    func test_retrieveSiteSummaryStats_returns_error_upon_empty_response() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        // When
+        let result: Result<Networking.SiteSummaryStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .current,
+                                                                period: .day,
+                                                                quantity: 1,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-09T17:06:55"),
+                                                                saveInStorage: false) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    /// Verifies that `StatsActionV4.retrieveSiteSummaryStats` effectively persists any retrieved SiteSummaryStats.
+    ///
+    func test_retrieveSiteSummaryStats_effectively_persists_retrieved_stats() {
+        // Given
+        let store = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "sites/\(sampleSiteID)/stats/summary/", filename: "site-summary-stats")
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteSummaryStats.self), 0)
+
+        // When
+        let result: Result<Networking.SiteSummaryStats, Error> = waitFor { promise in
+            let action = StatsActionV4.retrieveSiteSummaryStats(siteID: self.sampleSiteID,
+                                                                siteTimezone: .current,
+                                                                period: .day,
+                                                                quantity: 1,
+                                                                latestDateToInclude: DateFormatter.dateFromString(with: "2022-12-09T17:06:55"),
+                                                                saveInStorage: true) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteSummaryStats.self), 1)
+
+        let readOnlySiteSummaryStats = viewStorage.firstObject(ofType: Storage.SiteSummaryStats.self)?.toReadOnly()
+        XCTAssertEqual(readOnlySiteSummaryStats, sampleSiteSummaryStats())
+    }
+
+    /// Verifies that `upsertStoredSiteSummaryStats` does not produce duplicate entries.
+    ///
+    func test_upsertStoredSiteSummaryStats_effectively_updates_preexistant_SiteSummaryStats() {
+        let statsStore = StatsStoreV4(dispatcher: dispatcher, storageManager: storageManager, network: network)
+
+        XCTAssertNil(viewStorage.loadSiteSummaryStats(date: "2022-12-09", period: StatGranularity.day.rawValue))
+        statsStore.upsertStoredSiteSummaryStats(readOnlyStats: sampleSiteSummaryStats())
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteSummaryStats.self), 1)
+        statsStore.upsertStoredSiteSummaryStats(readOnlyStats: sampleSiteSummaryStatsMutated())
+        XCTAssertEqual(viewStorage.countObjects(ofType: Storage.SiteSummaryStats.self), 1)
+
+        let expectedSiteSummaryStats = sampleSiteSummaryStatsMutated()
+        let storageSiteSummaryStats = viewStorage.loadSiteSummaryStats(date: "2022-12-09", period: StatGranularity.day.rawValue)
+        XCTAssertEqual(storageSiteSummaryStats?.toReadOnly(), expectedSiteSummaryStats)
+    }
 }
 
 
 // MARK: - Private Methods
 //
 private extension StatsStoreV4Tests {
-    func date(with dateString: String) -> Date {
-        guard let date = DateFormatter.Defaults.dateTimeFormatter.date(from: dateString) else {
-            return Date()
-        }
-        return date
-    }
-
     // MARK: - Order Stats V4 Sample
 
     func sampleStats() -> Networking.OrderStatsV4 {
@@ -399,7 +703,23 @@ private extension StatsStoreV4Tests {
                                   taxes: 0,
                                   shipping: 0,
                                   netRevenue: 800,
-                                  totalProducts: 0)
+                                  totalProducts: 2,
+                                  averageOrderValue: 266)
+    }
+
+    /// Matches the first interval's `subtotals` field in `order-stats-v4-year` response.
+    func sampleIntervalSubtotals() -> Networking.OrderStatsV4Totals {
+        return OrderStatsV4Totals(totalOrders: 3,
+                                  totalItemsSold: 5,
+                                  grossRevenue: 800,
+                                  couponDiscount: 0,
+                                  totalCoupons: 0,
+                                  refunds: 0,
+                                  taxes: 0,
+                                  shipping: 0,
+                                  netRevenue: 800,
+                                  totalProducts: 0,
+                                  averageOrderValue: 266)
     }
 
     func sampleIntervals() -> [Networking.OrderStatsV4Interval] {
@@ -410,7 +730,7 @@ private extension StatsStoreV4Tests {
         return OrderStatsV4Interval(interval: "2019",
                                     dateStart: "2019-07-09 00:00:00",
                                     dateEnd: "2019-07-09 23:59:59",
-                                    subtotals: sampleTotals())
+                                    subtotals: sampleIntervalSubtotals())
     }
 
     func sampleStatsMutated() -> Networking.OrderStatsV4 {
@@ -441,45 +761,49 @@ private extension StatsStoreV4Tests {
                                   taxes: 0,
                                   shipping: 0,
                                   netRevenue: 0,
-                                  totalProducts: 0)
+                                  totalProducts: 0,
+                                  averageOrderValue: 0)
     }
 
     // MARK: - Site Visit Stats Sample
 
     func sampleSiteVisitStats() -> Networking.SiteVisitStats {
-        return SiteVisitStats(date: "2015-08-06",
+        return SiteVisitStats(siteID: sampleSiteID,
+                              date: "2015-08-06",
                               granularity: .year,
                               items: [sampleSiteVisitStatsItem1(), sampleSiteVisitStatsItem2()])
     }
 
 
     func sampleSiteVisitStatsItem1() -> Networking.SiteVisitStatsItem {
-        return SiteVisitStatsItem(period: "2014-01-01", visitors: 1135)
+        return SiteVisitStatsItem(period: "2014-01-01", visitors: 1135, views: 12821)
     }
 
     func sampleSiteVisitStatsItem2() -> Networking.SiteVisitStatsItem {
-        return SiteVisitStatsItem(period: "2015-01-01", visitors: 1629)
+        return SiteVisitStatsItem(period: "2015-01-01", visitors: 1629, views: 14808)
     }
 
     func sampleSiteVisitStatsMutated() -> Networking.SiteVisitStats {
-        return SiteVisitStats(date: "2015-08-06",
+        return SiteVisitStats(siteID: sampleSiteID,
+                              date: "2015-08-06",
                               granularity: .year,
                               items: [sampleSiteVisitStatsItem1Mutated(), sampleSiteVisitStatsItem2Mutated()])
     }
 
 
     func sampleSiteVisitStatsItem1Mutated() -> Networking.SiteVisitStatsItem {
-        return SiteVisitStatsItem(period: "2014-01-01", visitors: 1140)
+        return SiteVisitStatsItem(period: "2014-01-01", visitors: 1140, views: 12831)
     }
 
     func sampleSiteVisitStatsItem2Mutated() -> Networking.SiteVisitStatsItem {
-        return SiteVisitStatsItem(period: "2015-01-01", visitors: 1634)
+        return SiteVisitStatsItem(period: "2015-01-01", visitors: 1634, views: 14818)
     }
 
     // MARK: - Top Earner Stats Sample
 
     func sampleTopEarnerStats() -> Networking.TopEarnerStats {
-        return TopEarnerStats(date: "2020",
+        return TopEarnerStats(siteID: sampleSiteID,
+                              date: "2020",
                               granularity: .year,
                               limit: "3",
                               items: [sampleTopEarnerStatsItem1(), sampleTopEarnerStatsItem2()])
@@ -506,7 +830,8 @@ private extension StatsStoreV4Tests {
     }
 
     func sampleTopEarnerStatsMutated() -> Networking.TopEarnerStats {
-        return TopEarnerStats(date: "2020",
+        return TopEarnerStats(siteID: sampleSiteID,
+                              date: "2020",
                               granularity: .year,
                               limit: "3",
                               items: [sampleTopEarnerStatsMutatedItem1(), sampleTopEarnerStatsMutatedItem2()])
@@ -530,5 +855,31 @@ private extension StatsStoreV4Tests {
                                   total: 60000,
                                   currency: "",
                                   imageUrl: "https://dulces.mystagingwebsite.com/wp-content/uploads/2020/07/img_7472-scaled.jpeg")
+    }
+
+    // MARK: - Site Summary Stats Sample
+
+    func sampleSiteSummaryStats() -> Networking.SiteSummaryStats {
+        return SiteSummaryStats(siteID: sampleSiteID,
+                                date: "2022-12-09",
+                                period: .day,
+                                visitors: 12,
+                                views: 123)
+    }
+
+    func sampleSiteSummaryStatsMutated() -> Networking.SiteSummaryStats {
+        return SiteSummaryStats(siteID: sampleSiteID,
+                                date: "2022-12-09",
+                                period: .day,
+                                visitors: 15,
+                                views: 127)
+    }
+
+    func sampleSiteSummaryStatsQuarter() -> Networking.SiteSummaryStats {
+        return SiteSummaryStats(siteID: sampleSiteID,
+                                date: "2022-12-09",
+                                period: .month,
+                                visitors: 243,
+                                views: 486)
     }
 }

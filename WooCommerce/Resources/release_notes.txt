@@ -1,2 +1,1 @@
-The app now supports iOS 13 and up which will allow for more rapid feature development.
-We've fixed a bug that prevented thumbnail images from appearing for product variations on the order details screen, and centered the footer spinner vertically and horizontally.
+USA, say hello to Tap to Pay on iPhone! We are thrilled to announce that Tap to Pay is now available to USA merchants currently using WooCommerce Payments. Get a sneak peek of it by turning it on in the More tab > Settings > Experimental Features. That's not all! It's now possible to use the app without Jetpack! You’ve asked for it, and now it’s here!

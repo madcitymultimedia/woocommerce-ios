@@ -1,6 +1,8 @@
+import Codegen
+
 /// Represents the data associated with order stats over a specific period.
 /// v4
-public struct OrderStatsV4Totals: Decodable {
+public struct OrderStatsV4Totals: Decodable, Equatable, GeneratedCopiable, GeneratedFakeable {
     public let totalOrders: Int
     public let totalItemsSold: Int
     public let grossRevenue: Decimal
@@ -11,6 +13,7 @@ public struct OrderStatsV4Totals: Decodable {
     public let shipping: Decimal
     public let netRevenue: Decimal
     public let totalProducts: Int?
+    public let averageOrderValue: Decimal
 
     public init(totalOrders: Int,
                 totalItemsSold: Int,
@@ -21,7 +24,8 @@ public struct OrderStatsV4Totals: Decodable {
                 taxes: Decimal,
                 shipping: Decimal,
                 netRevenue: Decimal,
-                totalProducts: Int?) {
+                totalProducts: Int?,
+                averageOrderValue: Decimal) {
         self.totalOrders = totalOrders
         self.totalItemsSold = totalItemsSold
         self.grossRevenue = grossRevenue
@@ -32,6 +36,7 @@ public struct OrderStatsV4Totals: Decodable {
         self.shipping = shipping
         self.netRevenue = netRevenue
         self.totalProducts = totalProducts
+        self.averageOrderValue = averageOrderValue
     }
 
     public init(from decoder: Decoder) throws {
@@ -46,6 +51,7 @@ public struct OrderStatsV4Totals: Decodable {
         let shipping = try container.decode(Decimal.self, forKey: .shipping)
         let netRevenue = try container.decode(Decimal.self, forKey: .netRevenue)
         let totalProducts = try container.decodeIfPresent(Int.self, forKey: .products)
+        let averageOrderValue = try container.decode(Decimal.self, forKey: .averageOrderValue)
 
         self.init(totalOrders: totalOrders,
                   totalItemsSold: totalItemsSold,
@@ -56,30 +62,8 @@ public struct OrderStatsV4Totals: Decodable {
                   taxes: taxes,
                   shipping: shipping,
                   netRevenue: netRevenue,
-                  totalProducts: totalProducts)
-    }
-}
-
-
-// MARK: - Conformance to Equatable
-//
-extension OrderStatsV4Totals: Equatable {
-    public static func == (lhs: OrderStatsV4Totals, rhs: OrderStatsV4Totals) -> Bool {
-        return lhs.totalOrders == rhs.totalOrders &&
-            lhs.totalItemsSold == rhs.totalItemsSold &&
-            lhs.grossRevenue == rhs.grossRevenue &&
-            lhs.couponDiscount == rhs.couponDiscount &&
-            lhs.totalCoupons == rhs.totalCoupons &&
-            lhs.refunds == rhs.refunds &&
-            lhs.taxes == rhs.taxes &&
-            lhs.shipping == rhs.shipping &&
-            lhs.netRevenue == rhs.netRevenue &&
-            lhs.totalProducts == rhs.totalProducts
-    }
-
-    public static func < (lhs: OrderStatsV4Totals, rhs: OrderStatsV4Totals) -> Bool {
-        return lhs.grossRevenue < rhs.grossRevenue ||
-            (lhs.grossRevenue == rhs.grossRevenue && lhs.totalOrders < rhs.totalOrders)
+                  totalProducts: totalProducts,
+                  averageOrderValue: averageOrderValue)
     }
 }
 
@@ -98,5 +82,6 @@ private extension OrderStatsV4Totals {
         case shipping
         case netRevenue = "net_revenue"
         case products
+        case averageOrderValue = "avg_order_value"
     }
 }

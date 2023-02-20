@@ -6,7 +6,7 @@ import UIKit
 //
 final class TableFooterView: UIView {
 
-    @IBOutlet private var icon: UIImageView!
+    @IBOutlet var icon: UIImageView!
     @IBOutlet var footnote: UITextView!
     @IBOutlet private var iconHeight: NSLayoutConstraint!
     @IBOutlet private var iconWidth: NSLayoutConstraint!
@@ -63,7 +63,7 @@ extension TableFooterView {
         footnote.textContainerInset = .zero
         footnote.textAlignment = .center
         footnote.linkTextAttributes = [
-            .foregroundColor: UIColor.primary,
+            .foregroundColor: UIColor.textLink,
             .underlineColor: UIColor.clear,
             .underlineStyle: NSUnderlineStyle.single.rawValue
         ]

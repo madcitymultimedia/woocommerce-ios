@@ -1,7 +1,11 @@
 import Foundation
 import CocoaLumberjack
+import Experiments
 import Storage
 import Yosemite
+import Hardware
+import WooFoundation
+import WordPressShared
 
 /// Provides global dependencies.
 ///
@@ -33,6 +37,10 @@ final class ServiceLocator {
     ///
     private static var _noticePresenter: NoticePresenter = DefaultNoticePresenter()
 
+    /// Product image uploader
+    ///
+    private static var _productImageUploader: ProductImageUploaderProtocol = ProductImageUploader()
+
     /// Push Notifications Manager
     ///
     private static var _pushNotesManager: PushNotesManager = PushNotificationsManager()
@@ -51,11 +59,39 @@ final class ServiceLocator {
 
     /// CoreData Stack
     ///
-    private static var _storageManager = CoreDataManager(name: WooConstants.databaseStackName, crashLogger: SentryCrashLogger())
+    private static var _storageManager = CoreDataManager(name: WooConstants.databaseStackName, crashLogger: crashLogging)
 
     /// Cocoalumberjack DDLog
     ///
     private static var _fileLogger: Logs = DDFileLogger()
+
+    /// Crash Logging Stack
+    ///
+    private static var _crashLogging: CrashLoggingStack = WooCrashLoggingStack(
+        featureFlagService: featureFlagService
+    )
+
+    /// Support for external Card Readers
+    ///
+    #if !targetEnvironment(macCatalyst)
+    private static var _cardReader: CardReaderService = StripeCardReaderService()
+    #else
+    private static var _cardReader: CardReaderService = NoOpCardReaderService()
+    #endif
+
+    private static var _cardReaderConfigProvider: CommonReaderConfigProviding = CommonReaderConfigProvider()
+
+    /// Support for printing receipts
+    ///
+    private static var _receiptPrinter: PrinterService = AirPrintReceiptPrinterService()
+
+    /// Observer for network connectivity
+    ///
+    private static var _connectivityObserver: ConnectivityObserver = DefaultConnectivityObserver()
+
+    /// Storage for general app settings
+    ///
+    private static var _generalAppSettings: GeneralAppSettingsStorage = GeneralAppSettingsStorage()
 
     // MARK: - Getters
 
@@ -87,6 +123,12 @@ final class ServiceLocator {
     /// - Returns: An implementation of the NoticePresenter protocol. It defaults to DefaultNoticePresenter
     static var noticePresenter: NoticePresenter {
         return _noticePresenter
+    }
+
+    /// Provides the access point to the ProductImageUploaderProtocol.
+    /// - Returns: An implementation of the ProductImageUploaderProtocol. It defaults to ProductImageUploader
+    static var productImageUploader: ProductImageUploaderProtocol {
+        return _productImageUploader
     }
 
     /// Provides the access point to the PushNotesManager.
@@ -140,6 +182,15 @@ final class ServiceLocator {
         return _fileLogger
     }
 
+    /// Provides an instance of `WordPressLoggingDelegate` for logging in WordPress libraries.
+    static let wordPressLibraryLogger: WordPressLoggingDelegate = WordPressLibraryLogger()
+
+    /// Provides the access point to the CrashLogger
+    /// - Returns: An implementation
+    static var crashLogging: CrashLoggingStack {
+        return _crashLogging
+    }
+
     /// Provides the last known `KeyboardState`.
     ///
     /// Because `static let` is lazy, this should be accessed when the app is started
@@ -150,6 +201,35 @@ final class ServiceLocator {
     /// The main object to use for presenting SMS (`MessageUI`) ViewControllers.
     ///
     static let messageComposerPresenter = MessageComposerPresenter()
+
+
+    /// Provides the access point to the CardReaderService.
+    /// - Returns: An implementation of the CardReaderService protocol.
+    static var cardReaderService: CardReaderService {
+        _cardReader
+    }
+
+    static var cardReaderConfigProvider: CommonReaderConfigProviding {
+        _cardReaderConfigProvider
+    }
+
+    /// Provides the access point to the ReceiptPrinterService.
+    /// - Returns: An implementation of the ReceiptPrinterService protocol.
+    static var receiptPrinterService: PrinterService {
+        _receiptPrinter
+    }
+
+    /// Provides access point to the ConnectivityObserver.
+    /// - Returns: An implementation of the ConnectivityObserver protocol.
+    static var connectivityObserver: ConnectivityObserver {
+        _connectivityObserver
+    }
+
+    /// Provides access point to GeneralAppSettingsStorage
+    /// - Returns: An instance of GeneralAppSetingsStorage
+    static var generalAppSettings: GeneralAppSettingsStorage {
+        _generalAppSettings
+    }
 }
 
 
@@ -174,7 +254,7 @@ extension ServiceLocator {
     }
 
     static func setStores(_ mock: StoresManager) {
-        guard isRunningTests() else {
+        guard isRunningTests() || ProcessConfiguration.shouldUseScreenshotsNetworkLayer else {
             return
         }
 
@@ -213,6 +293,14 @@ extension ServiceLocator {
         _shippingSettingsService = mock
     }
 
+    static func setSelectedSiteSettings(_ mock: SelectedSiteSettings) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _selectedSiteSettings = mock
+    }
+
     static func setCurrencySettings(_ mock: CurrencySettings) {
         guard isRunningTests() else {
             return
@@ -235,6 +323,63 @@ extension ServiceLocator {
         }
 
         _fileLogger = mock
+    }
+
+    static func setCrashLogging(_ mock: CrashLoggingStack) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _crashLogging = mock
+    }
+
+    static func setCardReader(_ mock: CardReaderService) {
+        guard isRunningTests() else {
+            return
+        }
+        #if !targetEnvironment(macCatalyst)
+        _cardReader = mock
+        #endif
+    }
+
+    static func setCardReaderConfigProvider(_ mock: CommonReaderConfigProviding) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _cardReaderConfigProvider = mock
+    }
+
+    static func setReceiptPrinter(_ mock: PrinterService) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _receiptPrinter = mock
+    }
+
+    static func setConnectivityObserver(_ mock: ConnectivityObserver) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _connectivityObserver = mock
+    }
+
+    static func setGeneralAppSettingsStorage(_ mock: GeneralAppSettingsStorage) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _generalAppSettings = mock
+    }
+
+    static func setProductImageUploader(_ mock: ProductImageUploaderProtocol) {
+        guard isRunningTests() else {
+            return
+        }
+
+        _productImageUploader = mock
     }
 }
 

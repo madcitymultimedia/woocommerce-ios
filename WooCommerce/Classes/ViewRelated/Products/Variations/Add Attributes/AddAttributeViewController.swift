@@ -2,12 +2,17 @@ import UIKit
 import Yosemite
 import WordPressUI
 
-final class AddAttributeViewController: UIViewController {
+final class AddAttributeViewController: UIViewController, GhostableViewController {
 
     @IBOutlet private weak var tableView: UITableView!
-    private let ghostTableView = UITableView()
+
+    lazy var ghostTableViewController = GhostTableViewController(options: GhostTableViewOptions(cellClass: WooBasicTableViewCell.self))
 
     private let viewModel: AddAttributeViewModel
+
+    /// Closure to be invoked(with the updated product)  when the update/create attribute operation finishes successfully.
+    ///
+    private let onCompletion: (Product) -> Void
 
     /// Keyboard management
     ///
@@ -15,10 +20,13 @@ final class AddAttributeViewController: UIViewController {
         self?.handleKeyboardFrameUpdate(keyboardFrame: keyboardFrame)
     }
 
-    /// Init
+    /// Initializer for `AddAttributeViewController`
     ///
-    init(viewModel: AddAttributeViewModel) {
+    /// - Parameters:
+    ///   - onCompletion: Closure to be invoked(with the updated product)  when the update/create attribute operation finishes successfully.
+    init(viewModel: AddAttributeViewModel, onCompletion: @escaping (Product) -> Void) {
         self.viewModel = viewModel
+        self.onCompletion = onCompletion
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -34,7 +42,6 @@ final class AddAttributeViewController: UIViewController {
         registerTableViewHeaderSections()
         registerTableViewCells()
         configureTableView()
-        configureGhostTableView()
         configureViewModel()
         enableDoneButton(false)
     }
@@ -47,7 +54,6 @@ private extension AddAttributeViewController {
 
     func configureNavigationBar() {
         title = Localization.titleView
-
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: Localization.nextNavBarButton,
                                                            style: .plain,
                                                            target: self,
@@ -67,15 +73,6 @@ private extension AddAttributeViewController {
         tableView.delegate = self
     }
 
-    func configureGhostTableView() {
-        view.addSubview(ghostTableView)
-        ghostTableView.isHidden = true
-        ghostTableView.translatesAutoresizingMaskIntoConstraints = false
-        ghostTableView.pinSubviewToAllEdges(view)
-        ghostTableView.backgroundColor = .listBackground
-        ghostTableView.removeLastCellSeparator()
-    }
-
     func registerTableViewHeaderSections() {
         let headerNib = UINib(nibName: TwoColumnSectionHeaderView.reuseIdentifier, bundle: nil)
         tableView.register(headerNib, forHeaderFooterViewReuseIdentifier: TwoColumnSectionHeaderView.reuseIdentifier)
@@ -85,7 +82,6 @@ private extension AddAttributeViewController {
         for row in Row.allCases {
             tableView.registerNib(for: row.type)
         }
-        ghostTableView.registerNib(for: WooBasicTableViewCell.self)
     }
 
     func configureViewModel() {
@@ -95,12 +91,13 @@ private extension AddAttributeViewController {
             case .initialized:
                 break
             case .syncing:
-                self?.displayGhostTableView()
+                self?.displayGhostContent()
             case .failed:
-                self?.removeGhostTableView()
+                self?.removeGhostContent()
                 self?.displaySyncingErrorNotice()
             case .synced:
-                self?.removeGhostTableView()
+                self?.tableView.reloadData()
+                self?.removeGhostContent()
             }
         }
     }
@@ -113,27 +110,6 @@ private extension AddAttributeViewController {
 // MARK: - Placeholders & Errors
 //
 private extension AddAttributeViewController {
-
-    /// Renders ghost placeholder product attributes.
-    ///
-    func displayGhostTableView() {
-        let placeholderProductAttributesPerSection = [3]
-        let options = GhostOptions(displaysSectionHeader: false,
-                                   reuseIdentifier: WooBasicTableViewCell.reuseIdentifier,
-                                   rowsPerSection: placeholderProductAttributesPerSection)
-        ghostTableView.displayGhostContent(options: options,
-                                           style: .wooDefaultGhostStyle)
-        ghostTableView.isHidden = false
-    }
-
-    /// Removes ghost  placeholder product attributes.
-    ///
-    func removeGhostTableView() {
-        tableView.reloadData()
-        ghostTableView.removeGhostContent()
-        ghostTableView.isHidden = true
-    }
-
     /// Displays the Sync Error Notice.
     ///
     func displaySyncingErrorNotice() {
@@ -176,7 +152,8 @@ extension AddAttributeViewController: UITableViewDelegate {
         guard row == .existingAttribute else {
             return
         }
-        presentAddAttributeOptions(for: viewModel.localAndGlobalAttributes[indexPath.row])
+        let attribute = viewModel.localAndGlobalAttributes[indexPath.row]
+        presentAddAttributeOptions(for: .existing(attribute: attribute))
     }
 
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
@@ -232,9 +209,13 @@ private extension AddAttributeViewController {
                                                          onTextChange: { [weak self] newAttributeName in
                                                             self?.viewModel.handleNewAttributeNameChange(newAttributeName)
                                                             self?.enableDoneButton(self?.viewModel.newAttributeName != nil)
-
-            }, onTextDidBeginEditing: {
-        }, inputFormatter: nil, keyboardType: .default)
+                                                         }, onTextDidBeginEditing: {
+                                                         }, onTextDidReturn: { [weak self] _ in
+                                                            self?.doneButtonPressed()
+                                                         }, inputFormatter: nil,
+                                                         keyboardType: .default,
+                                                         returnKeyType: .next,
+                                                         autocapitalizationType: .words)
         cell.configure(viewModel: viewModel)
         cell.applyStyle(style: .body)
     }
@@ -266,19 +247,18 @@ extension AddAttributeViewController: KeyboardScrollable {
 extension AddAttributeViewController {
 
     @objc private func doneButtonPressed() {
-        presentAddAttributeOptions(for: viewModel.newAttributeName)
+        guard let name = viewModel.newAttributeName else {
+            return
+        }
+        presentAddAttributeOptions(for: .new(name: name))
     }
 
-    private func presentAddAttributeOptions(for newAttribute: String?) {
-        let viewModel = AddAttributeOptionsViewModel(newAttribute: newAttribute)
-        let addAttributeOptionsVC = AddAttributeOptionsViewController(viewModel: viewModel)
-        navigationController?.pushViewController(addAttributeOptionsVC, animated: true)
-    }
-
-    private func presentAddAttributeOptions(for existingAttribute: ProductAttribute) {
-        let viewModel = AddAttributeOptionsViewModel(existingAttribute: existingAttribute)
-        let addAttributeOptionsVC = AddAttributeOptionsViewController(viewModel: viewModel)
-        navigationController?.pushViewController(addAttributeOptionsVC, animated: true)
+    /// Presents `AddAttributeOptionsViewController` and passes the same `onCompletion` closure, for our presenterVC  to handle.
+    ///
+    private func presentAddAttributeOptions(for attribute: AddAttributeOptionsViewModel.Attribute) {
+        let viewModel = AddAttributeOptionsViewModel(product: self.viewModel.product, attribute: attribute)
+        let addAttributeOptionsVC = AddAttributeOptionsViewController(viewModel: viewModel, onCompletion: onCompletion)
+        show(addAttributeOptionsVC, sender: nil)
     }
 }
 
@@ -313,7 +293,7 @@ private extension AddAttributeViewController {
     enum Localization {
         static let titleView = NSLocalizedString("Add attribute", comment: "Add Product Attribute screen navigation title")
         static let nextNavBarButton = NSLocalizedString("Next", comment: "Next nav bar button title in Add Product Attribute screen")
-        static let titleCellPlaceholder = NSLocalizedString("Attribute name",
+        static let titleCellPlaceholder = NSLocalizedString("New Attribute Name",
                                                             comment: "Add Product Attribute. Placeholder of cell presenting the title of the new attribute.")
         static let syncErrorMessage = NSLocalizedString("Unable to load product attributes", comment: "Load Product Attributes Action Failed")
         static let retryAction = NSLocalizedString("Retry", comment: "Retry Action")

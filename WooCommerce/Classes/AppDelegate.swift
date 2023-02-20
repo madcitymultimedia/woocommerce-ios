@@ -2,6 +2,8 @@ import UIKit
 import CoreData
 import Storage
 import class Networking.UserAgent
+import Experiments
+import class WidgetKit.WidgetCenter
 
 import CocoaLumberjack
 import KeychainAccess
@@ -9,6 +11,11 @@ import WordPressUI
 import WordPressKit
 import WordPressAuthenticator
 import AutomatticTracks
+
+import class Yosemite.ScreenshotStoresManager
+
+// In that way, Inject will be available in the entire target.
+@_exported import Inject
 
 #if DEBUG
 import Wormholy
@@ -36,31 +43,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// Tab Bar Controller
     ///
     var tabBarController: MainTabBarController? {
-        return window?.rootViewController as? MainTabBarController
+        appCoordinator?.tabBarController
     }
 
-    /// Checks on whether the Apple ID credential is valid when the app is logged in and becomes active.
-    ///
-    private lazy var appleIDCredentialChecker = AppleIDCredentialChecker()
+    private let universalLinkRouter = UniversalLinkRouter.defaultUniversalLinkRouter()
 
     // MARK: - AppDelegate Methods
 
     func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-
-        // As first thing, setup the crash logging
-        setupCrashLogging()
-
         // Setup Components
         setupAnalytics()
-        setupAuthenticationManager()
         setupCocoaLumberjack()
+        setupLibraryLogger()
         setupLogLevel(.verbose)
         setupPushNotificationsManagerIfPossible()
         setupAppRatingManager()
         setupWormholy()
         setupKeyboardStateProvider()
         handleLaunchArguments()
-        appleIDCredentialChecker.observeLoggedInStateForAppleIDObservations()
+        setupUserNotificationCenter()
 
         // Components that require prior Auth
         setupZendesk()
@@ -68,18 +69,27 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Yosemite Initialization
         synchronizeEntitiesIfPossible()
 
+        // Since we are using Injection for refreshing the content of the app in debug mode,
+        // we are going to enable Inject.animation that will be used when
+        // ever new source code is injected into our application.
+        Inject.animation = .interactiveSpring()
+
         // Upgrade check...
+        // This has to be called after A/B testing setup in `setupAnalytics` (which calls
+        // `WooAnalytics.refreshUserData`) if any of the Tracks events in `checkForUpgrades` is
+        // used as an exposure event for an experiment.
+        // For example, `application_installed` could be the exposure event for logged-out experiments.
         checkForUpgrades()
 
         return true
     }
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-
         // Setup the Interface!
         setupMainWindow()
         setupComponentsAppearance()
         setupNoticePresenter()
+        disableAnimationsIfNeeded()
 
         // Start app navigation.
         appCoordinator?.start()
@@ -107,18 +117,38 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ServiceLocator.pushNotesManager.registrationDidFail(with: error)
     }
 
-    func application(_ application: UIApplication,
-                     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
-                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        ServiceLocator.pushNotesManager.handleNotification(userInfo, onBadgeUpdateCompletion: {}, completionHandler: completionHandler)
+    /// Called when the app receives a remote notification in the background.
+    /// For local/remote notification tap events, please refer to `UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:)`.
+    /// When receiving a local/remote notification in the foreground, please refer to
+    /// `UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:)`.
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
+        await ServiceLocator.pushNotesManager.handleRemoteNotificationInTheBackground(userInfo: userInfo)
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
-        // Sent when the application is about to move from active to inactive state.
-        // This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message)
-        // or when the user quits the application and it begins the transition to the background state.
-        // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks.
-        // Games should use this method to pause the game.
+        // Simulate push notification for capturing snapshot.
+        // This is supposed to be called only by the WooCommerceScreenshots target.
+        if ProcessConfiguration.shouldSimulatePushNotification {
+            let content = UNMutableNotificationContent()
+            content.title = NSLocalizedString(
+                "You have a new order! 🎉",
+                comment: "Title for the mocked order notification needed for the AppStore listing screenshot"
+            )
+            content.body = NSLocalizedString(
+                "New order for $13.98 on Your WooCommerce Store",
+                comment: "Message for the mocked order notification needed for the AppStore listing screenshot. " +
+                "'Your WooCommerce Store' is the name of the mocked store."
+            )
+
+            // show this notification seconds from now
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 3, repeats: false)
+
+            // choose a random identifier
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+
+            // add our notification request
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {
@@ -142,6 +172,18 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         DDLogVerbose("👀 Application terminating...")
         NotificationCenter.default.post(name: .applicationTerminating, object: nil)
     }
+
+    func application(_ application: UIApplication,
+                     continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
+        if userActivity.activityType == NSUserActivityTypeBrowsingWeb {
+            handleWebActivity(userActivity)
+        }
+
+        trackWidgetTappedIfNeeded(userActivity: userActivity)
+
+        return true
+    }
 }
 
 
@@ -152,17 +194,11 @@ private extension AppDelegate {
     /// Sets up the main UIWindow instance.
     ///
     func setupMainWindow() {
-        let storyboard = UIStoryboard(name: "Main", bundle: nil) // Main is the name of storyboard
+        let window = UIWindow()
+        window.makeKeyAndVisible()
+        self.window = window
 
-        window = UIWindow()
-        window?.rootViewController = storyboard.instantiateInitialViewController()
-        window?.makeKeyAndVisible()
-
-        guard let tabBarController = tabBarController else {
-            assertionFailure("Unexpected root view controller: \(String(describing: window?.rootViewController))")
-            return
-        }
-        appCoordinator = AppCoordinator(tabBarController: tabBarController)
+        appCoordinator = AppCoordinator(window: window)
     }
 
     /// Sets up all of the component(s) Appearance.
@@ -195,7 +231,7 @@ private extension AppDelegate {
         appearance.topDividerColor = appearance.bodyBackgroundColor
 
         appearance.titleTextColor = .text
-        appearance.titleFont = UIFont.title2
+        appearance.titleFont = UIFont.title2SemiBold
 
         appearance.bodyTextColor = .text
         appearance.bodyFont = UIFont.body
@@ -216,29 +252,16 @@ private extension AppDelegate {
         appearance.primaryHighlightBorderColor = .primaryButtonDownBorder
     }
 
-    /// Sets up Crash Logging
-    ///
-    func setupCrashLogging() {
-        let eventLogging = EventLogging(dataSource: WCEventLoggingDataSource(), delegate: WCEventLoggingDelegate())
-        CrashLogging.start(withDataProvider: WCCrashLoggingDataProvider(), eventLogging: eventLogging)
-    }
-
     /// Sets up the Zendesk SDK.
     ///
     func setupZendesk() {
-        ZendeskManager.shared.initialize()
+        ZendeskProvider.shared.initialize()
     }
 
     /// Sets up the WordPress Authenticator.
     ///
     func setupAnalytics() {
         ServiceLocator.analytics.initialize()
-    }
-
-    /// Sets up the WordPress Authenticator.
-    ///
-    func setupAuthenticationManager() {
-        ServiceLocator.authenticationManager.initialize()
     }
 
     /// Sets up CocoaLumberjack logging.
@@ -255,25 +278,38 @@ private extension AppDelegate {
         DDLog.add(logger)
     }
 
-    /// Sets up the current Log Leve.
+    /// Sets up loggers for WordPress libraries
+    ///
+    func setupLibraryLogger() {
+        let logger = ServiceLocator.wordPressLibraryLogger
+        WPSharedSetLoggingDelegate(logger)
+        WPAuthenticatorSetLoggingDelegate(logger)
+        WPKitSetLoggingDelegate(logger)
+    }
+
+    /// Sets up the current Log Level.
     ///
     func setupLogLevel(_ level: DDLogLevel) {
-        WPSharedSetLoggingLevel(level)
-        WPAuthenticatorSetLoggingLevel(level)
-        WPKitSetLoggingLevel(level)
+        CocoaLumberjack.dynamicLogLevel = level
     }
 
     /// Setup: Notice Presenter
     ///
     func setupNoticePresenter() {
         var noticePresenter = ServiceLocator.noticePresenter
-        noticePresenter.presentingViewController = window?.rootViewController
+        noticePresenter.presentingViewController = appCoordinator?.tabBarController
     }
 
     /// Push Notifications: Authorization + Registration!
     ///
     func setupPushNotificationsManagerIfPossible() {
-        guard ServiceLocator.stores.isAuthenticated, ServiceLocator.stores.needsDefaultStore == false else {
+        let stores = ServiceLocator.stores
+        guard stores.isAuthenticated,
+              stores.needsDefaultStore == false,
+              stores.isAuthenticatedWithoutWPCom == false else {
+            if ServiceLocator.featureFlagService.isFeatureFlagEnabled(.loginErrorNotifications) {
+                ServiceLocator.pushNotesManager.ensureAuthorizationIsRequested(includesProvisionalAuth: true, onCompletion: nil)
+            }
             return
         }
 
@@ -282,8 +318,15 @@ private extension AppDelegate {
         #else
             let pushNotesManager = ServiceLocator.pushNotesManager
             pushNotesManager.registerForRemoteNotifications()
-            pushNotesManager.ensureAuthorizationIsRequested(onCompletion: nil)
+            pushNotesManager.ensureAuthorizationIsRequested(includesProvisionalAuth: false, onCompletion: nil)
         #endif
+    }
+
+    func setupUserNotificationCenter() {
+        guard ServiceLocator.featureFlagService.isFeatureFlagEnabled(.loginErrorNotifications) else {
+            return
+        }
+        UNUserNotificationCenter.current().delegate = self
     }
 
     /// Set up app review prompt
@@ -318,15 +361,47 @@ private extension AppDelegate {
     }
 
     func handleLaunchArguments() {
-        if ProcessInfo.processInfo.arguments.contains("logout-at-launch") {
-          ServiceLocator.stores.deauthenticate()
+        if ProcessConfiguration.shouldLogoutAtLaunch {
+            ServiceLocator.stores.deauthenticate()
         }
 
-        if ProcessInfo.processInfo.arguments.contains("disable-animations") {
-            UIView.setAnimationsEnabled(false)
+        if ProcessConfiguration.shouldUseScreenshotsNetworkLayer {
+            ServiceLocator.setStores(ScreenshotStoresManager(storageManager: ServiceLocator.storageManager))
+        }
 
-            /// Trick found at: https://twitter.com/twannl/status/1232966604142653446
-            UIApplication.shared.currentKeyWindow?.layer.speed = 100
+        if ProcessConfiguration.shouldSimulatePushNotification {
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { _, _ in }
+        }
+    }
+
+    func disableAnimationsIfNeeded() {
+        guard ProcessConfiguration.shouldDisableAnimations else {
+            return
+        }
+
+        UIView.setAnimationsEnabled(false)
+
+        /// Trick found at: https://twitter.com/twannl/status/1232966604142653446
+        UIApplication
+            .shared
+            .connectedScenes
+            .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
+            .forEach {
+                $0.layer.speed = 100
+            }
+    }
+
+    /// Tracks if the application was opened via a widget tap.
+    ///
+    func trackWidgetTappedIfNeeded(userActivity: NSUserActivity) {
+        switch userActivity.activityType {
+        case WooConstants.storeInfoWidgetKind:
+            let widgetFamily = userActivity.userInfo?[WidgetCenter.UserInfoKey.family] as? String
+            ServiceLocator.analytics.track(event: .Widgets.widgetTapped(name: .todayStats, family: widgetFamily))
+        case WooConstants.appLinkWidgetKind:
+            ServiceLocator.analytics.track(event: .Widgets.widgetTapped(name: .appLink))
+        default:
+            break
         }
     }
 }
@@ -341,7 +416,8 @@ private extension AppDelegate {
         let versionOfLastRun = UserDefaults.standard[.versionOfLastRun] as? String
         if versionOfLastRun == nil {
             // First run after a fresh install
-            ServiceLocator.analytics.track(.applicationInstalled)
+            ServiceLocator.analytics.track(.applicationInstalled,
+                                           withProperties: ["after_abtest_setup": true])
         } else if versionOfLastRun != currentVersion {
             // App was upgraded
             ServiceLocator.analytics.track(.applicationUpgraded, withProperties: ["previous_version": versionOfLastRun ?? String()])
@@ -370,5 +446,29 @@ extension AppDelegate {
     func authenticatorWasDismissed() {
         setupPushNotificationsManagerIfPossible()
         RequirementsChecker.checkMinimumWooVersionForDefaultStore()
+    }
+}
+
+// MARK: - UNUserNotificationCenterDelegate
+
+extension AppDelegate: UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await ServiceLocator.pushNotesManager.handleUserResponseToNotification(response)
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        await ServiceLocator.pushNotesManager.handleNotificationInTheForeground(notification)
+    }
+}
+
+// MARK: - Universal Links
+
+private extension AppDelegate {
+    func handleWebActivity(_ activity: NSUserActivity) {
+        guard let linkURL = activity.webpageURL else {
+            return
+        }
+
+        universalLinkRouter.handle(url: linkURL)
     }
 }

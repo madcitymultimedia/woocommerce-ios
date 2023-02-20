@@ -4,22 +4,23 @@ import XCTest
 
 /// DevicesRemote Unit Tests
 ///
-class DevicesRemoteTests: XCTestCase {
+final class DevicesRemoteTests: XCTestCase {
 
     /// Dummy Network Wrapper
     ///
-    let network = MockNetwork()
+    private let network = MockNetwork()
 
     /// Repeat always!
     ///
     override func setUp() {
+        super.setUp()
         network.removeAllSimulatedResponses()
     }
 
 
     /// Verifies that registerDevice parses a "Success" Backend Response.
     ///
-    func testRegisterDeviceSuccessfullyParsesDeviceIdentifier() {
+    func test_registerDevice_successfully_parses_deviceID() {
         let remote = DevicesRemote(network: network)
         let expectation = self.expectation(description: "Register Device")
 
@@ -39,9 +40,27 @@ class DevicesRemoteTests: XCTestCase {
         wait(for: [expectation], timeout: Constants.expectationTimeout)
     }
 
+    /// Verifies that registerDevice sets the `selected_blog_id` parameter to empty string.
+    ///
+    func test_registerDevice_sets_selected_blog_id_to_empty_string() throws {
+        // Given
+        let remote = DevicesRemote(network: network)
+
+        // When
+        remote.registerDevice(device: Parameters.appleDevice,
+                              applicationId: Parameters.applicationId,
+                              applicationVersion: Parameters.applicationVersion,
+                              defaultStoreID: Parameters.defaultStoreID) { (_, _) in }
+
+        // Then
+        let queryParameters = try XCTUnwrap(network.queryParameters)
+        let expectedParam = "selected_blog_id="
+        XCTAssertTrue(queryParameters.contains(expectedParam), "Expected to have param: \(expectedParam)")
+    }
+
     /// Verifies that registerDevice parses a "Failure" Backend Response.
     ///
-    func testRegisterDeviceParsesGeneralFailureResponse() {
+    func test_registerDevice_parses_general_failure_response() {
         let remote = DevicesRemote(network: network)
         let expectation = self.expectation(description: "Register Device")
 
@@ -62,7 +81,7 @@ class DevicesRemoteTests: XCTestCase {
 
     /// Verifies that unregisterDevice parses a "Success" Backend Response.
     ///
-    func testUnregisterDeviceParsesSuccessResponse() {
+    func test_unregisterDevice_parses_success_response() {
         let remote = DevicesRemote(network: network)
         let expectation = self.expectation(description: "Unregister Device")
 
@@ -78,7 +97,7 @@ class DevicesRemoteTests: XCTestCase {
 
     /// Verifies that unregisterDevice parses a "Failure" Backend Response.
     ///
-    func testUnregisterDeviceParsesFailureResponse() {
+    func test_unregisterDevice_parses_failure_response() {
         let remote = DevicesRemote(network: network)
         let expectation = self.expectation(description: "Unregister Device")
 

@@ -13,6 +13,7 @@ final class ProductVisibilityViewController: UIViewController {
     private let onCompletion: Completion
 
     private let productSettings: ProductSettings
+    private let showsPasswordProtectedVisibility: Bool
 
     private var visibility: ProductVisibility = .public
 
@@ -25,9 +26,10 @@ final class ProductVisibilityViewController: UIViewController {
 
     /// Init
     ///
-    init(settings: ProductSettings, completion: @escaping Completion) {
+    init(settings: ProductSettings, showsPasswordProtectedVisibility: Bool, completion: @escaping Completion) {
         productSettings = settings
         onCompletion = completion
+        self.showsPasswordProtectedVisibility = showsPasswordProtectedVisibility
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -57,12 +59,18 @@ final class ProductVisibilityViewController: UIViewController {
         }
     }
 
+    override func viewLayoutMarginsDidChange() {
+        super.viewLayoutMarginsDidChange()
+        reloadSections()
+    }
+
     private func reloadSections() {
         if visibility == .passwordProtected {
             sections = [Section(rows: [.publicVisibility, .passwordVisibility, .passwordField, .privateVisibility])]
-        }
-        else {
+        } else if showsPasswordProtectedVisibility {
             sections = [Section(rows: [.publicVisibility, .passwordVisibility, .privateVisibility])]
+        } else {
+            sections = [Section(rows: [.publicVisibility, .privateVisibility])]
         }
         tableView.reloadData()
     }
@@ -76,7 +84,7 @@ final class ProductVisibilityViewController: UIViewController {
         case .private:
             return .privateStatus
         default:
-            return .publish
+            return .published
         }
     }
 }
@@ -87,8 +95,6 @@ private extension ProductVisibilityViewController {
 
     func configureNavigationBar() {
         title = NSLocalizedString("Visibility", comment: "Product Visibility navigation title")
-
-        removeNavigationBackBarButtonText()
     }
 
     func configureMainView() {
@@ -196,6 +202,8 @@ private extension ProductVisibilityViewController {
     ///
    func configure(_ cell: UITableViewCell, for row: Row, at indexPath: IndexPath) {
         switch cell {
+        case let cell as BasicTableViewCell where row == .passwordVisibility:
+            configurePasswordVisibilityCell(cell: cell, indexPath: indexPath)
         case let cell as BasicTableViewCell:
             configureVisibilityCell(cell: cell, indexPath: indexPath)
         case let cell as TitleAndTextFieldWithImageTableViewCell:
@@ -210,6 +218,21 @@ private extension ProductVisibilityViewController {
         cell.selectionStyle = .default
         cell.textLabel?.text = row.description
         cell.accessoryType = row.visibility == visibility ? .checkmark : .none
+        cell.showSeparator(inset: .init(top: 0, left: tableView.layoutMargins.left, bottom: 0, right: 0))
+    }
+
+    func configurePasswordVisibilityCell(cell: BasicTableViewCell, indexPath: IndexPath) {
+        configureVisibilityCell(cell: cell, indexPath: indexPath)
+
+        let isSelected: Bool = {
+            let row = sections[indexPath.section].rows[indexPath.row]
+            return row.visibility == visibility
+        }()
+        if isSelected {
+            cell.hideSeparator()
+        } else {
+            cell.showSeparator(inset: .init(top: 0, left: tableView.layoutMargins.left, bottom: 0, right: 0))
+        }
     }
 
     func configurePasswordFieldCell(cell: TitleAndTextFieldWithImageTableViewCell, indexPath: IndexPath) {

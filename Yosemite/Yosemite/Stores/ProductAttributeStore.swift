@@ -8,7 +8,7 @@ public final class ProductAttributeStore: Store {
     private let remote: ProductAttributesRemote
 
     private lazy var sharedDerivedStorage: StorageType = {
-        return storageManager.newDerivedStorage()
+        return storageManager.writerDerivedStorage
     }()
 
     public override init(dispatcher: Dispatcher, storageManager: StorageManagerType, network: Network) {
@@ -147,6 +147,7 @@ private extension ProductAttributeStore {
                 }
                 return storage.insertNewObject(ofType: Storage.ProductAttribute.self)
             }()
+
             storageProductAttribute.update(with: readOnlyProductAttribute)
         }
     }

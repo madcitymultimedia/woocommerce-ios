@@ -6,27 +6,6 @@ import UIKit
 protocol ProductTagsDataSource: UITableViewDataSource {
 }
 
-final class LoadingDataSource: NSObject, ProductTagsDataSource {
-
-    private static let cellIdentifier = BasicTableViewCell.reuseIdentifier
-
-    func numberOfSections(in tableView: UITableView) -> Int {
-        return 1
-    }
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return 1
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: LoadingDataSource.cellIdentifier, for: indexPath)
-
-        cell.textLabel?.text = NSLocalizedString("Loading...", comment: "Loading tags in Product Tags screen")
-        cell.selectionStyle = .none
-        return cell
-    }
-}
-
 final class FailureDataSource: NSObject, ProductTagsDataSource {
 
     private static let cellIdentifier = BasicTableViewCell.reuseIdentifier
@@ -42,7 +21,7 @@ final class FailureDataSource: NSObject, ProductTagsDataSource {
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: FailureDataSource.cellIdentifier, for: indexPath)
         cell.textLabel?.textColor = .text
-        cell.backgroundColor = .listForeground
+        cell.backgroundColor = .listForeground(modal: false)
         return cell
     }
 }

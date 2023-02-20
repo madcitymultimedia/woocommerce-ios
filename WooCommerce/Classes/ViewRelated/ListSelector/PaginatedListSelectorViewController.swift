@@ -1,7 +1,7 @@
+import Combine
 import UIKit
 import WordPressUI
 import Yosemite
-import Observables
 
 import class AutomatticTracks.CrashLogging
 
@@ -36,6 +36,14 @@ protocol PaginatedListSelectorDataSource {
     func sync(pageNumber: Int, pageSize: Int, onCompletion: ((Result<Bool, Error>) -> Void)?)
 }
 
+/// `PaginatedListSelectorDataSource` implementing this protocol enables intra-table drag-and-drop in `PaginatedListSelectorViewController`.
+///
+protocol DraggablePaginatedListSelectorDataSource {
+
+    /// Called to rearrange ordered list of models in datasource. For example, as a reaction to drag and drop in a tableview.
+    func moveItem(from sourceIndex: Int, to destinationIndex: Int)
+}
+
 // Default implementation for optional variables/functions.
 extension PaginatedListSelectorDataSource {
     var customResultsSortOrder: ((StorageModel.ReadOnlyType, StorageModel.ReadOnlyType) -> Bool)? {
@@ -46,13 +54,17 @@ extension PaginatedListSelectorDataSource {
 /// Displays a paginated list (implemented by table view) for the user to select a generic model.
 ///
 final class PaginatedListSelectorViewController<DataSource: PaginatedListSelectorDataSource, Model, StorageModel, Cell>: UIViewController,
-    UITableViewDataSource, UITableViewDelegate, PaginationTrackerDelegate
+    UITableViewDataSource, UITableViewDelegate, UITableViewDragDelegate, PaginationTrackerDelegate, GhostableViewController
 where DataSource.StorageModel == StorageModel, Model == DataSource.StorageModel.ReadOnlyType, Model: Equatable, DataSource.Cell == Cell {
     private let viewProperties: PaginatedListSelectorViewProperties
     private var dataSource: DataSource
     private let onDismiss: (_ selected: Model?) -> Void
 
     private let rowType = Cell.self
+
+    lazy var ghostTableViewController = GhostTableViewController(options: GhostTableViewOptions(sectionHeaderVerticalSpace: .large,
+                                                                                                cellClass: Cell.self,
+                                                                                                separatorStyle: viewProperties.separatorStyle))
 
     private lazy var tableView: UITableView = UITableView(frame: .zero, style: viewProperties.tableViewStyle)
 
@@ -87,7 +99,7 @@ where DataSource.StorageModel == StorageModel, Model == DataSource.StorageModel.
     private let scrollWatcher = ScrollWatcher()
     private let paginationTracker = PaginationTracker()
 
-    private var cancellableScrollWatcher: ObservationToken?
+    private var scrollWatcherSubscription: AnyCancellable?
 
     /// Keep track of the (Autosizing Cell's) Height. This helps us prevent UI flickers, due to sizing recalculations.
     ///
@@ -132,6 +144,7 @@ where DataSource.StorageModel == StorageModel, Model == DataSource.StorageModel.
         configureNavigation()
         configureMainView()
         configureTableView()
+        configureDragAndDrop()
         configureScrollWatcher()
         configurePaginationTracker()
     }
@@ -245,6 +258,18 @@ where DataSource.StorageModel == StorageModel, Model == DataSource.StorageModel.
             sender.endRefreshing()
         }
     }
+
+    // MARK: - Drag and Drop
+    //
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at indexPath: IndexPath) -> [UIDragItem] {
+        // Since we support drag-and-drop only inside single UITableView with simple indexes to do sorting
+        // there is no need for extra data to store in UIDragItem
+        return []
+    }
+
+    func tableView(_ tableView: UITableView, moveRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        (dataSource as? DraggablePaginatedListSelectorDataSource)?.moveItem(from: sourceIndexPath.row, to: destinationIndexPath.row)
+    }
 }
 
 // MARK: - View Configuration
@@ -273,15 +298,20 @@ private extension PaginatedListSelectorViewController {
 
         tableView.separatorStyle = viewProperties.separatorStyle
 
-        // Removes extra header spacing in ghost content view.
-        tableView.estimatedSectionHeaderHeight = 0
-        tableView.sectionHeaderHeight = 0
-
         view.addSubview(tableView)
         tableView.translatesAutoresizingMaskIntoConstraints = false
-        view.pinSubviewToSafeArea(tableView)
+        view.pinSubviewToAllEdges(tableView)
 
         registerTableViewCells()
+    }
+
+    func configureDragAndDrop() {
+        guard dataSource is DraggablePaginatedListSelectorDataSource else {
+            return
+        }
+
+        tableView.dragInteractionEnabled = true
+        tableView.dragDelegate = self
     }
 
     func registerTableViewCells() {
@@ -298,7 +328,7 @@ private extension PaginatedListSelectorViewController {
 
     func configurePaginationTracker() {
         paginationTracker.delegate = self
-        cancellableScrollWatcher = scrollWatcher.trigger.subscribe { [weak self] _ in
+        scrollWatcherSubscription = scrollWatcher.trigger.sink { [weak self] _ in
             self?.paginationTracker.ensureNextPageIsSynced()
         }
     }
@@ -351,9 +381,7 @@ private extension PaginatedListSelectorViewController {
     /// Renders the Placeholder Orders: For safety reasons, we'll also halt ResultsController <> UITableView glue.
     ///
     func displayPlaceholderProducts() {
-        let options = GhostOptions(reuseIdentifier: Cell.reuseIdentifier, rowsPerSection: placeholderRowsPerSection)
-        tableView.displayGhostContent(options: options,
-                                      style: .wooDefaultGhostStyle)
+        displayGhostContent()
 
         resultsController.stopForwardingEvents()
     }
@@ -361,7 +389,7 @@ private extension PaginatedListSelectorViewController {
     /// Removes the Placeholder Products (and restores the ResultsController <> UITableView link).
     ///
     func removePlaceholderProducts() {
-        tableView.removeGhostContent()
+        removeGhostContent()
         resultsController.startForwardingEvents(to: tableView)
         tableView.reloadData()
     }
@@ -433,7 +461,7 @@ private extension PaginatedListSelectorViewController {
         do {
             try resultsController.performFetch()
         } catch {
-            CrashLogging.logError(error)
+            ServiceLocator.crashLogging.logError(error)
         }
 
         tableView.reloadData()

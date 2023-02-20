@@ -9,11 +9,10 @@ final class ProductFormActionsFactory_NonEmptyBottomSheetActionsTests: XCTestCas
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .linkedProducts(editable: true),
                                                                        .productType(editable: true)]
@@ -33,11 +32,10 @@ final class ProductFormActionsFactory_NonEmptyBottomSheetActionsTests: XCTestCas
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .linkedProducts(editable: true),
                                                                        .productType(editable: true)]
@@ -53,13 +51,12 @@ final class ProductFormActionsFactory_NonEmptyBottomSheetActionsTests: XCTestCas
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
-                                                                       .downloadableFiles,
+                                                                       .downloadableFiles(editable: true),
                                                                        .linkedProducts(editable: true),
                                                                        .productType(editable: true)]
         XCTAssertEqual(factory.settingsSectionActions(), expectedSettingsSectionActions)
@@ -73,22 +70,16 @@ final class ProductFormActionsFactory_NonEmptyBottomSheetActionsTests: XCTestCas
 private extension ProductFormActionsFactory_NonEmptyBottomSheetActionsTests {
     enum Fixtures {
         // downloadable: false, virtual: false, missing inventory/shipping/categories/tags/short description
-        static let physicalProduct = MockProduct().product(downloadable: false, shortDescription: "", manageStock: true, sku: nil, stockQuantity: nil,
-                                                           dimensions: ProductDimensions(length: "", width: "", height: ""), weight: nil,
-                                                           virtual: false,
-                                                           categories: [],
-                                                           tags: [])
+        static let physicalProduct = Product.fake().copy(productTypeKey: ProductType.simple.rawValue,
+                                                         virtual: false,
+                                                         downloadable: false,
+                                                         manageStock: true,
+                                                         reviewsAllowed: true,
+                                                         upsellIDs: [4, 5, 6],
+                                                         crossSellIDs: [1, 2, 3])
         // downloadable: false, virtual: true, missing inventory/shipping/categories/tags/short description
-        static let virtualProduct = MockProduct().product(downloadable: false, shortDescription: "", manageStock: true, sku: nil, stockQuantity: nil,
-                                                          dimensions: ProductDimensions(length: "", width: "", height: ""), weight: nil,
-                                                          virtual: true,
-                                                          categories: [],
-                                                          tags: [])
+        static let virtualProduct = Fixtures.physicalProduct.copy(virtual: true)
         // downloadable: true, virtual: true, missing inventory/shipping/categories/tags/short description
-        static let downloadableProduct = MockProduct().product(downloadable: true, shortDescription: "", manageStock: true, sku: nil, stockQuantity: nil,
-                                                               dimensions: ProductDimensions(length: "", width: "", height: ""), weight: nil,
-                                                               virtual: true,
-                                                               categories: [],
-                                                               tags: [])
+        static let downloadableProduct = Fixtures.physicalProduct.copy(virtual: true, downloadable: true)
     }
 }

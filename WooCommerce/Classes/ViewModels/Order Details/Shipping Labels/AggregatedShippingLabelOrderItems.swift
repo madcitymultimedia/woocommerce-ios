@@ -1,4 +1,5 @@
 import Yosemite
+import WooFoundation
 
 /// Aggregates the order items included in a shipping label for UI display given the currently available `OrderItem`s, `Product`s,
 /// and `ProductVariation`s from an `Order`.
@@ -39,11 +40,6 @@ struct AggregatedShippingLabelOrderItems {
     /// Returns an order item for a shipping label given an index, if available. Otherwise, nil is returned.
     func orderItem(of shippingLabel: ShippingLabel, at index: Int) -> AggregateOrderItem? {
         orderItems(of: shippingLabel)[safe: index]
-    }
-
-    /// Returns an array of order items from all of the given non-refunded shipping labels.
-    func orderItemsOfNonRefundedShippingLabels(_ shippingLabels: [ShippingLabel]) -> [AggregateOrderItem] {
-        shippingLabels.nonRefunded.flatMap { orderItems(of: $0) }
     }
 }
 
@@ -117,8 +113,14 @@ private extension AggregatedShippingLabelOrderItems {
         case .product(let product, let orderItem, let name):
             let productName = orderItem?.name ?? name
             let price = orderItem?.price ??
-                currencyFormatter.convertToDecimal(from: product.price) ?? 0
+                currencyFormatter.convertToDecimal(product.price) ?? 0
             let totalPrice = price.multiplying(by: .init(decimal: Decimal(quantity)))
+            let imageURL: URL?
+            if let encodedImageURLString = product.images.first?.src.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                imageURL = URL(string: encodedImageURLString)
+            } else {
+                imageURL = nil
+            }
             return .init(productID: product.productID,
                          variationID: 0,
                          name: productName,
@@ -126,13 +128,19 @@ private extension AggregatedShippingLabelOrderItems {
                          quantity: Decimal(quantity),
                          sku: orderItem?.sku ?? product.sku,
                          total: totalPrice,
-                         imageURL: URL(string: product.images.first?.src ?? ""),
+                         imageURL: imageURL,
                          attributes: orderItem?.attributes ?? [])
         case .productVariation(let variation, let orderItem, let name):
             let productName = orderItem?.name ?? name
             let price = orderItem?.price ??
-                currencyFormatter.convertToDecimal(from: variation.price) ?? 0
+                currencyFormatter.convertToDecimal(variation.price) ?? 0
             let totalPrice = price.multiplying(by: .init(decimal: Decimal(quantity)))
+            let imageURL: URL?
+            if let encodedImageURLString = variation.image?.src.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                imageURL = URL(string: encodedImageURLString)
+            } else {
+                imageURL = nil
+            }
             return .init(productID: variation.productID,
                          variationID: variation.productVariationID,
                          name: productName,
@@ -140,7 +148,7 @@ private extension AggregatedShippingLabelOrderItems {
                          quantity: Decimal(quantity),
                          sku: orderItem?.sku ?? variation.sku,
                          total: totalPrice,
-                         imageURL: URL(string: variation.image?.src ?? ""),
+                         imageURL: imageURL,
                          attributes: orderItem?.attributes ?? [])
         }
     }

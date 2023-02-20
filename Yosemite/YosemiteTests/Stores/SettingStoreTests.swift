@@ -6,7 +6,7 @@ import XCTest
 
 /// SettingStoreTests Unit Tests
 ///
-class SettingStoreTests: XCTestCase {
+final class SettingStoreTests: XCTestCase {
 
     /// Mock Dispatcher!
     ///
@@ -477,71 +477,277 @@ class SettingStoreTests: XCTestCase {
 
     /// Verifies that `SettingAction.retrieveSiteAPI` returns the expected API information.
     ///
-    func testRetrieveSiteAPIReturnsExpectedStatus() {
+    func test_retrieveSiteAPI_returns_expected_status() throws {
+        // Given
         let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
-        let expectation = self.expectation(description: "Retrieve Site API info successfully")
-
         network.simulateResponse(requestUrlSuffix: "", filename: "site-api")
-        let action = SettingAction.retrieveSiteAPI(siteID: sampleSiteID) { (siteAPI, error) in
-            XCTAssertNil(error)
-            XCTAssertNotNil(siteAPI)
-            XCTAssertEqual(siteAPI, self.sampleSiteAPIWithWoo())
-            expectation.fulfill()
+
+        // When
+        let result: Result<SiteAPI, Error> = waitFor { promise in
+            let action = SettingAction.retrieveSiteAPI(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        store.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let siteAPI = try result.get()
+        XCTAssertEqual(siteAPI, sampleSiteAPIWithWoo())
     }
 
     /// Verifies that `SettingAction.retrieveSiteAPI` returns the expected API information.
     ///
-    func testRetrieveSiteAPIReturnsExpectedStatusForNonWooSite() {
+    func test_retrieveSiteAPI_returns_expected_status_for_non_woo_site() throws {
+        // Given
         let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
-        let expectation = self.expectation(description: "Retrieve Site API info successfully for non-Woo site")
-
         network.simulateResponse(requestUrlSuffix: "", filename: "site-api-no-woo")
-        let action = SettingAction.retrieveSiteAPI(siteID: sampleSiteID) { (siteAPI, error) in
-            XCTAssertNil(error)
-            XCTAssertNotNil(siteAPI)
-            XCTAssertEqual(siteAPI, self.sampleSiteAPINoWoo())
-            expectation.fulfill()
+
+        // When
+        let result: Result<SiteAPI, Error> = waitFor { promise in
+            let action = SettingAction.retrieveSiteAPI(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        store.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let siteAPI = try result.get()
+        XCTAssertEqual(siteAPI, sampleSiteAPINoWoo())
     }
 
     /// Verifies that `SettingAction.retrieveSiteAPI` returns an error whenever there is an error response from the backend.
     ///
-    func testRetrieveSiteAPIReturnsErrorUponReponseError() {
-        let expectation = self.expectation(description: "Retrieve Site API info error response")
-        let settingStore = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
-
+    func test_retrieveSiteAPI_returns_error_upon_reponse_error() {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
         network.simulateResponse(requestUrlSuffix: "", filename: "generic_error")
-        let action = SettingAction.retrieveSiteAPI(siteID: sampleSiteID) { (siteAPI, error) in
-            XCTAssertNil(siteAPI)
-            XCTAssertNotNil(error)
-            expectation.fulfill()
+
+        // When
+        let result: Result<SiteAPI, Error> = waitFor { promise in
+            let action = SettingAction.retrieveSiteAPI(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        settingStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 
     /// Verifies that `SettingAction.retrieveSiteAPI` returns an error whenever there is no backend response.
     ///
-    func testRetrieveSiteAPIReturnsErrorUponEmptyResponse() {
-        let expectation = self.expectation(description: "Retrieve Site API info empty response")
-        let settingStore = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+    func test_retrieveSiteAPI_returns_error_upon_empty_response() {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
 
-        let action = SettingAction.retrieveSiteAPI(siteID: sampleSiteID) { (siteAPI, error) in
-            XCTAssertNil(siteAPI)
-            XCTAssertNotNil(error)
-            expectation.fulfill()
+        // When
+        let result: Result<SiteAPI, Error> = waitFor { promise in
+            let action = SettingAction.retrieveSiteAPI(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
         }
 
-        settingStore.onAction(action)
-        wait(for: [expectation], timeout: Constants.expectationTimeout)
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    func test_retrieveCouponSetting_returns_correct_setting() throws {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/general/woocommerce_enable_coupons", filename: "setting-coupon")
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveCouponSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try XCTUnwrap(result.get())
+        XCTAssertTrue(isEnabled)
+    }
+
+    func test_retrieveCouponSetting_updates_stored_settings() {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_enable_coupons", value: "no", settingGroupKey: "general")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/general/woocommerce_enable_coupons", filename: "setting-coupon")
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveCouponSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let updated = viewStorage.loadSiteSetting(siteID: sampleSiteID, settingID: "woocommerce_enable_coupons")?.toReadOnly()
+        XCTAssertEqual(updated?.value, "yes")
+    }
+
+    func test_retrieveCouponSetting_returns_error_when_loading_fails_and_setting_is_found_in_storage() throws {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_enable_coupons", value: "no", settingGroupKey: "general")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let expectedError = NetworkError.unacceptableStatusCode(statusCode: 500)
+        network.simulateError(requestUrlSuffix: "settings/general/woocommerce_enable_coupons", error: expectedError)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveCouponSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    func test_enableCouponSetting_updates_stored_settings() {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_enable_coupons", value: "no", settingGroupKey: "general")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/general/woocommerce_enable_coupons", filename: "setting-coupon")
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = SettingAction.enableCouponSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(result.isFailure)
+        let updated = viewStorage.loadSiteSetting(siteID: sampleSiteID, settingID: "woocommerce_enable_coupons")?.toReadOnly()
+        XCTAssertEqual(updated?.value, "yes")
+    }
+
+    func test_enableCouponSetting_returns_error_if_remote_request_fails() {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let expectedError = NetworkError.unacceptableStatusCode(statusCode: 500)
+        network.simulateError(requestUrlSuffix: "settings/general/woocommerce_enable_coupons", error: expectedError)
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = SettingAction.enableCouponSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    func test_retrieveAnalyticsSetting_returns_correct_setting() throws {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/advanced/woocommerce_analytics_enabled", filename: "setting-analytics")
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveAnalyticsSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        let isEnabled = try XCTUnwrap(result.get())
+        XCTAssertTrue(isEnabled)
+    }
+
+    func test_retrieveAnalyticsSetting_updates_stored_settings() {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_analytics_enabled", value: "no", settingGroupKey: "advanced")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/advanced/woocommerce_analytics_enabled", filename: "setting-analytics")
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveAnalyticsSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isSuccess)
+        let updated = viewStorage.loadSiteSetting(siteID: sampleSiteID, settingID: "woocommerce_analytics_enabled")?.toReadOnly()
+        XCTAssertEqual(updated?.value, "yes")
+    }
+
+    func test_retrieveAnalyticsSetting_returns_error_when_loading_fails_and_setting_is_found_in_storage() throws {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_analytics_enabled", value: "no", settingGroupKey: "general")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let expectedError = NetworkError.unacceptableStatusCode(statusCode: 500)
+        network.simulateError(requestUrlSuffix: "settings/advanced/woocommerce_analytics_enabled", error: expectedError)
+
+        // When
+        let result: Result<Bool, Error> = waitFor { promise in
+            let action = SettingAction.retrieveAnalyticsSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
+    }
+
+    func test_enableAnalyticsSetting_updates_stored_settings() {
+        // Given
+        let oldSetting = SiteSetting.fake().copy(siteID: sampleSiteID, settingID: "woocommerce_analytics_enabled", value: "no", settingGroupKey: "advanced")
+        storageManager.insertSampleSiteSetting(readOnlySiteSetting: oldSetting)
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        network.simulateResponse(requestUrlSuffix: "settings/advanced/woocommerce_analytics_enabled", filename: "setting-analytics")
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = SettingAction.enableAnalyticsSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertFalse(result.isFailure)
+        let updated = viewStorage.loadSiteSetting(siteID: sampleSiteID, settingID: "woocommerce_analytics_enabled")?.toReadOnly()
+        XCTAssertEqual(updated?.value, "yes")
+    }
+
+    func test_enableAnalyticsSetting_returns_error_if_remote_request_fails() {
+        // Given
+        let store = SettingStore(dispatcher: dispatcher, storageManager: storageManager, network: network)
+        let expectedError = NetworkError.unacceptableStatusCode(statusCode: 500)
+        network.simulateError(requestUrlSuffix: "settings/advanced/woocommerce_analytics_enabled", error: expectedError)
+
+        // When
+        let result: Result<Void, Error> = waitFor { promise in
+            let action = SettingAction.enableAnalyticsSetting(siteID: self.sampleSiteID) { result in
+                promise(result)
+            }
+            store.onAction(action)
+        }
+
+        // Then
+        XCTAssertTrue(result.isFailure)
     }
 }
 
@@ -556,7 +762,8 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_currency",
                            label: "Currency",
-                           description: "This controls what currency prices are listed at in the catalog and which currency gateways will take payments in.",
+                           settingDescription: "This controls what currency prices are listed at in the catalog"
+                            + " and which currency gateways will take payments in.",
                            value: "USD",
                            settingGroupKey: SiteSettingGroup.general.rawValue)
     }
@@ -565,7 +772,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_currency",
                            label: "Currency!",
-                           description: "This controls what currency prices are listed!",
+                           settingDescription: "This controls what currency prices are listed!",
                            value: "GBP",
                            settingGroupKey: SiteSettingGroup.general.rawValue)
     }
@@ -574,7 +781,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_price_thousand_sep",
                            label: "Thousand separator",
-                           description: "This sets the thousand separator of displayed prices.",
+                           settingDescription: "This sets the thousand separator of displayed prices.",
                            value: ",",
                            settingGroupKey: SiteSettingGroup.general.rawValue)
     }
@@ -583,7 +790,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_price_thousand_sep",
                            label: "Thousand separator!!",
-                           description: "This sets the thousand separator!!",
+                           settingDescription: "This sets the thousand separator!!",
                            value: "~",
                            settingGroupKey: SiteSettingGroup.general.rawValue)
     }
@@ -594,7 +801,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_dimension_unit",
                            label: "Dimensions unit",
-                           description: "This controls what unit you will define lengths in.",
+                           settingDescription: "This controls what unit you will define lengths in.",
                            value: "m",
                            settingGroupKey: SiteSettingGroup.product.rawValue)
     }
@@ -603,7 +810,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_dimension_unit",
                            label: "Dimension Fruit",
-                           description: "This controls what fruit you will define lengths in.",
+                           settingDescription: "This controls what fruit you will define lengths in.",
                            value: "Kumquat",
                            settingGroupKey: SiteSettingGroup.product.rawValue)
     }
@@ -612,7 +819,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_weight_unit",
                            label: "Weight unit",
-                           description: "This controls what unit you will define weights in.",
+                           settingDescription: "This controls what unit you will define weights in.",
                            value: "kg",
                            settingGroupKey: SiteSettingGroup.product.rawValue)
     }
@@ -621,7 +828,7 @@ private extension SettingStoreTests {
         return SiteSetting(siteID: sampleSiteID,
                            settingID: "woocommerce_weight_unit",
                            label: "Animal unit",
-                           description: "This controls what animal you will define weights in.",
+                           settingDescription: "This controls what animal you will define weights in.",
                            value: "elephants",
                            settingGroupKey: SiteSettingGroup.product.rawValue)
     }

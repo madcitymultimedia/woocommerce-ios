@@ -21,7 +21,7 @@ final class ProductsTabProductViewModelTests: XCTestCase {
 
     func test_details_contain_stock_status_with_quantity_when_manage_stock_is_enabled() {
         // Arrange
-        let stockQuantity: Int64 = 6
+        let stockQuantity: Decimal = 6
         let product = productMock().copy(manageStock: true, stockQuantity: stockQuantity, stockStatusKey: ProductStockStatus.inStock.rawValue)
 
         // Action
@@ -29,14 +29,15 @@ final class ProductsTabProductViewModelTests: XCTestCase {
         let detailsText = viewModel.detailsAttributedString.string
 
         // Assert
-        let format = NSLocalizedString("%ld in stock", comment: "Label about product's inventory stock status shown on Products tab")
-        let expectedStockDetail = String.localizedStringWithFormat(format, stockQuantity)
+        let localizedStockQuantity = NumberFormatter.localizedString(from: stockQuantity as NSNumber, number: .decimal)
+        let format = NSLocalizedString("%1$@ in stock", comment: "Label about product's inventory stock status shown on Products tab")
+        let expectedStockDetail = String.localizedStringWithFormat(format, localizedStockQuantity)
         XCTAssertTrue(detailsText.contains(expectedStockDetail))
     }
 
     func test_details_contain_stock_status_without_quantity_when_manage_stock_is_disabled() {
         // Arrange
-        let stockQuantity: Int64 = 6
+        let stockQuantity: Decimal = 6
         let product = productMock().copy(manageStock: false, stockQuantity: stockQuantity, stockStatusKey: ProductStockStatus.inStock.rawValue)
 
         // Action
@@ -72,7 +73,7 @@ final class ProductsTabProductViewModelTests: XCTestCase {
         let detailsText = viewModel.detailsAttributedString.string
 
         // Assert
-        let singularFormat = NSLocalizedString("%ld variant", comment: "Label about one product variation shown on Products tab")
+        let singularFormat = NSLocalizedString("%ld variation", comment: "Label about one product variation shown on Products tab")
         let expectedStockDetail = String.localizedStringWithFormat(singularFormat, variations.count)
         XCTAssertTrue(detailsText.contains(expectedStockDetail))
     }
@@ -87,21 +88,57 @@ final class ProductsTabProductViewModelTests: XCTestCase {
         let detailsText = viewModel.detailsAttributedString.string
 
         // Assert
-        let pluralFormat = NSLocalizedString("%ld variants", comment: "Label about number of variations shown on Products tab")
+        let pluralFormat = NSLocalizedString("%ld variations", comment: "Label about number of variations shown on Products tab")
         let expectedStockDetail = String.localizedStringWithFormat(pluralFormat, variations.count)
         XCTAssertTrue(detailsText.contains(expectedStockDetail))
     }
 
+    func test_details_contain_sku_when_isSKUShown_is_true() {
+        // Given
+        let sku = "pear"
+        let product = productMock(name: "Yay").copy(sku: sku)
+
+        // When
+        let viewModel = ProductsTabProductViewModel(product: product, isSKUShown: true)
+        let detailsText = viewModel.detailsAttributedString.string
+
+        // Then
+        let expectedSKU = String.localizedStringWithFormat(Localization.skuFormat, sku)
+        XCTAssertTrue(detailsText.contains(expectedSKU))
+    }
+
+    func test_details_do_not_contain_sku_when_isSKUShown_is_false() {
+        // Given
+        let sku = "pear"
+        let product = productMock(name: "Yay").copy(sku: sku)
+
+        // When
+        let viewModel = ProductsTabProductViewModel(product: product, isSKUShown: false)
+        let detailsText = viewModel.detailsAttributedString.string
+
+        // Then
+        let skuText = String.localizedStringWithFormat(Localization.skuFormat, sku)
+        XCTAssertFalse(detailsText.contains(skuText))
+    }
 }
 
 extension ProductsTabProductViewModelTests {
     func productMock(name: String = "Hogsmeade",
-                     stockQuantity: Int64? = nil,
+                     stockQuantity: Decimal? = nil,
                      stockStatus: ProductStockStatus = .inStock,
                      variations: [Int64] = [],
                      images: [ProductImage] = []) -> Product {
 
-        let mock = MockProduct()
-        return mock.product(name: name, stockQuantity: stockQuantity, stockStatus: stockStatus, variations: variations, images: images)
+        return Product.fake().copy(name: name,
+                                   stockQuantity: stockQuantity,
+                                   stockStatusKey: stockStatus.rawValue,
+                                   images: images,
+                                   variations: variations)
+    }
+}
+
+private extension ProductsTabProductViewModelTests {
+    enum Localization {
+        static let skuFormat = NSLocalizedString("SKU: %1$@", comment: "Label about the SKU of a product in the product list. Reads, `SKU: productSku`")
     }
 }

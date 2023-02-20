@@ -5,11 +5,19 @@ public enum FeedbackType: String, Codable {
     ///
     case general
 
-    /// identifier for the products m4 beta feedback survey
+    /// identifier for the shipping labels m3 feedback survey
     ///
-    case productsM4
+    case shippingLabelsRelease3
 
-    /// identifier for the shipping labels m1 feedback survey
+    /// Identifier for the coupon management feedback survey
     ///
-    case shippingLabelsRelease1
+    case couponManagement
+
+    /// Identifier for the orders creation feedback survey
+    ///
+    case ordersCreation
+
+    /// Identifier for the In-Person Payments feedback survey
+    ///
+    case inPersonPayments
 }

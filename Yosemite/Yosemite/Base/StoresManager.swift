@@ -1,5 +1,5 @@
+import Combine
 import Foundation
-import Observables
 
 /// Abstracts the Stores coordination
 ///
@@ -36,23 +36,44 @@ public protocol StoresManager {
     ///
     func updateDefaultStore(storeID: Int64)
 
+    /// Updates the default site only in cases where a site's properties are updated (e.g. after installing & activating Jetpack-the-plugin).
+    /// The given site's site ID should match the default site ID, otherwise nothing is updated.
+    ///
+    func updateDefaultStore(_ site: Site)
+
     /// Indicates if the StoresManager is currently authenticated, or not.
     ///
     var isAuthenticated: Bool { get }
 
-    /// Indicates if the user is currently logged in to a store.
+    /// Indicates if the StoresManager is currently authenticated with site credentials only.
     ///
-    var isLoggedIn: Observable<Bool> { get }
+    var isAuthenticatedWithoutWPCom: Bool { get }
+
+    /// Publishes signal that indicates if the user is currently logged in with credentials.
+    ///
+    var isLoggedInPublisher: AnyPublisher<Bool, Never> { get }
 
     /// The currently logged in store/site ID. Nil when the app is logged out.
     ///
-    var siteID: Observable<Int64?> { get }
+    var siteID: AnyPublisher<Int64?, Never> { get }
+
+    /// Observable currently selected site.
+    ///
+    var site: AnyPublisher<Site?, Never> { get }
 
     /// Indicates if we need a Default StoreID, or there's one already set.
     ///
     var needsDefaultStore: Bool { get }
 
+    /// Publishes signal that indicates if we need a default store ID, or there is one already set.
+    ///
+    var needsDefaultStorePublisher: AnyPublisher<Bool, Never> { get }
+
     /// SessionManagerProtocol: Persistent Storage for Session-Y Properties.
     /// This property is thread safe
     var sessionManager: SessionManagerProtocol { get }
+
+    /// Update the user roles for the default site.
+    ///
+    func updateDefaultRoles(_ roles: [User.Role])
 }

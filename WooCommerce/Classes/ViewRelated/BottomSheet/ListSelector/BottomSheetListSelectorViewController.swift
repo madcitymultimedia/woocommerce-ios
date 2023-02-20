@@ -42,6 +42,10 @@ UIViewController, UITableViewDataSource, UITableViewDelegate where Command.Model
 
         configureMainView()
         configureTableView()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         configurePreferredContentSize()
     }
 
@@ -63,6 +67,7 @@ UIViewController, UITableViewDataSource, UITableViewDelegate where Command.Model
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(Cell.self, for: indexPath)
         let model = command.data[indexPath.row]
+        cell.accessibilityTraits.insert(.button)
         command.configureCell(cell: cell, model: model)
 
         return cell
@@ -81,11 +86,14 @@ UIViewController, UITableViewDataSource, UITableViewDelegate where Command.Model
     }
 
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard viewProperties.title != nil || viewProperties.subtitle != nil else {
+            return nil
+        }
         guard let header = tableView.dequeueReusableHeaderFooterView(withIdentifier: BottomSheetListSelectorSectionHeaderView.reuseIdentifier)
             as? BottomSheetListSelectorSectionHeaderView else {
                 fatalError()
         }
-        header.configure(text: viewProperties.title)
+        header.configure(title: viewProperties.title, subtitle: viewProperties.subtitle)
         return header
     }
 }
@@ -95,7 +103,7 @@ UIViewController, UITableViewDataSource, UITableViewDelegate where Command.Model
 private extension BottomSheetListSelectorViewController {
 
     func configureMainView() {
-        view.backgroundColor = .listForeground
+        view.backgroundColor = .listForeground(modal: false)
     }
 
     func configureTableView() {
@@ -103,10 +111,10 @@ private extension BottomSheetListSelectorViewController {
         tableView.dataSource = self
 
         tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedSectionHeaderHeight = estimatedSectionHeight
+        tableView.estimatedSectionHeaderHeight = (viewProperties.title != nil || viewProperties.subtitle != nil) ? estimatedSectionHeight : .zero
         tableView.sectionHeaderHeight = UITableView.automaticDimension
 
-        tableView.backgroundColor = .listForeground
+        tableView.backgroundColor = .listForeground(modal: false)
 
         registerTableViewCells()
         registerTableViewHeaderFooters()

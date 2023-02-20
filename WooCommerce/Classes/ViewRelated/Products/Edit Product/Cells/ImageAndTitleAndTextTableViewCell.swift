@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 
 /// Displays an optional image, title and text.
@@ -12,13 +13,18 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
     /// Use cases where an image, title, and text could be displayed.
     /// TODO-3419: add support for other use cases that are currently configured with individual `*ViewModel`.
     enum Style {
+        /// Default style with image, tile, and text shown.
+        case `default`
         /// Only the image and title label are displayed with a given font style for the title.
         case imageAndTitleOnly(fontStyle: FontStyle)
+        /// The cell's title, image, and background color are set to warning style.
+        case warning
     }
 
     /// Contains configurable properties for the cell.
     struct DataConfiguration {
         let title: String?
+        let titleFontStyle: FontStyle
         let text: String?
         let textTintColor: UIColor?
         let image: UIImage?
@@ -26,16 +32,20 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
         let numberOfLinesForTitle: Int
         let numberOfLinesForText: Int
         let isActionable: Bool
+        let showsSeparator: Bool
 
         init(title: String?,
+             titleFontStyle: FontStyle = .body,
              text: String? = nil,
              textTintColor: UIColor? = nil,
              image: UIImage? = nil,
              imageTintColor: UIColor? = nil,
              numberOfLinesForTitle: Int = 1,
              numberOfLinesForText: Int = 1,
-             isActionable: Bool = true) {
+             isActionable: Bool = true,
+             showsSeparator: Bool = true) {
             self.title = title
+            self.titleFontStyle = titleFontStyle
             self.text = text
             self.textTintColor = textTintColor
             self.image = image
@@ -43,11 +53,13 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
             self.numberOfLinesForTitle = numberOfLinesForTitle
             self.numberOfLinesForText = numberOfLinesForText
             self.isActionable = isActionable
+            self.showsSeparator = showsSeparator
         }
     }
 
-    struct ViewModel {
+    struct ViewModel: Equatable {
         let title: String?
+        let titleFontStyle: FontStyle
         let text: String?
         let textTintColor: UIColor?
         let image: UIImage?
@@ -55,23 +67,34 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
         let numberOfLinesForTitle: Int
         let numberOfLinesForText: Int
         let isActionable: Bool
+        let isSelected: Bool
+        let showsDisclosureIndicator: Bool
+        let showsSeparator: Bool
 
         init(title: String?,
+             titleFontStyle: FontStyle = .body,
              text: String?,
              textTintColor: UIColor? = nil,
              image: UIImage? = nil,
              imageTintColor: UIColor? = nil,
              numberOfLinesForTitle: Int = 1,
              numberOfLinesForText: Int = 1,
-             isActionable: Bool = true) {
+             isSelected: Bool = false,
+             isActionable: Bool = true,
+             showsDisclosureIndicator: Bool = false,
+             showsSeparator: Bool = true) {
             self.title = title
+            self.titleFontStyle = titleFontStyle
             self.text = text
             self.textTintColor = textTintColor
             self.image = image
             self.imageTintColor = imageTintColor
             self.numberOfLinesForTitle = numberOfLinesForTitle
             self.numberOfLinesForText = numberOfLinesForText
+            self.isSelected = isSelected
             self.isActionable = isActionable
+            self.showsDisclosureIndicator = showsDisclosureIndicator
+            self.showsSeparator = showsSeparator
         }
     }
 
@@ -90,20 +113,6 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
         }
     }
 
-    /// View model for warning UI.
-    struct WarningViewModel {
-        let icon: UIImage
-        let title: String?
-    }
-
-    /// View model to replace TopLeftImageTableViewCell
-    struct TopLeftImageViewModel {
-        let icon: UIImage
-        let iconColor: UIColor?
-        let title: String
-        let isFootnoteStyle: Bool
-    }
-
     @IBOutlet private weak var contentStackView: UIStackView!
     @IBOutlet private weak var contentImageStackView: UIStackView!
     @IBOutlet private weak var contentImageView: UIImageView!
@@ -114,6 +123,8 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
     /// Disabled by default. When active, image is constrained to 24pt
     @IBOutlet private var contentImageViewWidthConstraint: NSLayoutConstraint!
 
+    private var cancellable: AnyCancellable?
+
     override func awakeFromNib() {
         super.awakeFromNib()
         configureLabels()
@@ -121,6 +132,12 @@ final class ImageAndTitleAndTextTableViewCell: UITableViewCell {
         configureContentStackView()
         configureTitleAndTextStackView()
         applyDefaultBackgroundStyle()
+        configureSelectedBackground()
+    }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        cancellable = nil
     }
 }
 
@@ -130,6 +147,12 @@ extension ImageAndTitleAndTextTableViewCell {
     func updateUI(viewModel: ViewModel) {
         titleLabel.text = viewModel.title
         titleLabel.isHidden = viewModel.title == nil || viewModel.title?.isEmpty == true
+        switch viewModel.titleFontStyle {
+        case .body:
+            titleLabel.applyBodyStyle()
+        case .footnote:
+            titleLabel.applyFootnoteStyle()
+        }
         titleLabel.textColor = viewModel.text?.isEmpty == false ? .text: .textSubtle
         titleLabel.numberOfLines = viewModel.numberOfLinesForTitle
         descriptionLabel.text = viewModel.text
@@ -138,7 +161,13 @@ extension ImageAndTitleAndTextTableViewCell {
         descriptionLabel.numberOfLines = viewModel.numberOfLinesForText
         contentImageView.image = viewModel.image
         contentImageStackView.isHidden = viewModel.image == nil
-        accessoryType = viewModel.isActionable ? .disclosureIndicator: .none
+        if viewModel.showsDisclosureIndicator {
+            accessoryType = .disclosureIndicator
+        } else if viewModel.isSelected {
+            accessoryType = .checkmark
+        } else {
+            accessoryType = .none
+        }
         selectionStyle = viewModel.isActionable ? .default: .none
         accessoryView = nil
 
@@ -153,6 +182,12 @@ extension ImageAndTitleAndTextTableViewCell {
         contentView.backgroundColor = nil
 
         contentImageViewWidthConstraint.isActive = false
+
+        if viewModel.showsSeparator {
+            showSeparator()
+        } else {
+            hideSeparator()
+        }
     }
 
     func updateUI(switchableViewModel: SwitchableViewModel) {
@@ -172,70 +207,71 @@ extension ImageAndTitleAndTextTableViewCell {
         contentView.backgroundColor = nil
     }
 
-    func updateUI(warningViewModel: WarningViewModel) {
-        let viewModel = ViewModel(title: warningViewModel.title,
-                                  text: nil,
-                                  textTintColor: .warning,
-                                  image: warningViewModel.icon,
-                                  imageTintColor: .warning,
-                                  isActionable: false)
-        updateUI(viewModel: viewModel)
-
-        titleLabel.textColor = .text
-        titleLabel.numberOfLines = 0
-        contentView.backgroundColor = .warningBackground
-    }
-
-    func updateUI(topLeftImageViewModel: TopLeftImageViewModel) {
-        let viewModel = ViewModel(title: topLeftImageViewModel.title,
-                                  text: nil,
-                                  image: topLeftImageViewModel.icon,
-                                  imageTintColor: topLeftImageViewModel.iconColor,
-                                  numberOfLinesForTitle: 0,
-                                  isActionable: false)
-        updateUI(viewModel: viewModel)
-
-        if topLeftImageViewModel.isFootnoteStyle {
-            titleLabel.applyFootnoteStyle()
-        } else {
-            titleLabel.applyBodyStyle()
-        }
-
-        contentImageViewWidthConstraint.isActive = true
-    }
-
     /// Updates cell with the given style and data configuration.
     func update(with style: Style, data: DataConfiguration) {
         switch style {
         case .imageAndTitleOnly(let fontStyle):
-            applyImageAndTitleOnlyStyle(fontStyle: fontStyle, data: data)
+            let data = DataConfiguration(title: data.title,
+                                         titleFontStyle: fontStyle,
+                                         text: data.text,
+                                         textTintColor: data.textTintColor,
+                                         image: data.image,
+                                         imageTintColor: data.imageTintColor,
+                                         numberOfLinesForTitle: data.numberOfLinesForTitle,
+                                         numberOfLinesForText: data.numberOfLinesForText,
+                                         isActionable: data.isActionable,
+                                         showsSeparator: data.showsSeparator)
+            applyImageAndTitleOnlyStyle(data: data)
+        case .warning:
+            applyWarningStyle(data: data)
+        case .default:
+            // TODO-3419: replace `ViewModel` with `Style` and `DataConfiguration` here
+            break
         }
+        applyAccessibilityChanges(contentSizeCategory: traitCollection.preferredContentSizeCategory, style: style)
+        observeContentSizeCategoryChanges(style: style)
     }
 }
 
 // MARK: Private update helpers
 //
 private extension ImageAndTitleAndTextTableViewCell {
-    func applyImageAndTitleOnlyStyle(fontStyle: FontStyle, data: DataConfiguration) {
-        switch fontStyle {
-        case .body:
-            titleLabel.applyBodyStyle()
-        case .footnote:
-            titleLabel.applyFootnoteStyle()
-        }
+    func observeContentSizeCategoryChanges(style: Style) {
+        cancellable = NotificationCenter.default
+                .publisher(for: UIContentSizeCategory.didChangeNotification)
+                .sink { [weak self] notification in
+                    guard let self = self,
+                          let contentSizeCategory = notification.userInfo?[UIContentSizeCategory.newValueUserInfoKey] as? UIContentSizeCategory else {
+                        return
+                    }
+                    self.applyAccessibilityChanges(contentSizeCategory: contentSizeCategory, style: style)
+                }
+    }
+
+    func applyImageAndTitleOnlyStyle(data: DataConfiguration) {
         applyDefaultStyle(data: data)
         contentImageViewWidthConstraint.isActive = true
     }
 
+    func applyWarningStyle(data: DataConfiguration) {
+        applyDefaultStyle(data: data)
+
+        titleLabel.textColor = .text
+        contentImageView.tintColor = .warning
+        contentView.backgroundColor = .warningBackground
+    }
+
     func applyDefaultStyle(data: DataConfiguration) {
         let viewModel = ViewModel(title: data.title,
+                                  titleFontStyle: data.titleFontStyle,
                                   text: data.text,
                                   textTintColor: data.textTintColor,
                                   image: data.image,
                                   imageTintColor: data.imageTintColor,
                                   numberOfLinesForTitle: data.numberOfLinesForTitle,
                                   numberOfLinesForText: data.numberOfLinesForText,
-                                  isActionable: data.isActionable)
+                                  isActionable: data.isActionable,
+                                  showsSeparator: data.showsSeparator)
         updateUI(viewModel: viewModel)
     }
 }
@@ -257,11 +293,44 @@ private extension ImageAndTitleAndTextTableViewCell {
     }
 
     func configureContentStackView() {
-        contentStackView.alignment = .center
+        contentStackView.alignment = .firstBaseline
         contentStackView.spacing = 16
     }
 
     func configureTitleAndTextStackView() {
         titleAndTextStackView.spacing = 2
+    }
+
+    func configureSelectedBackground() {
+        selectedBackgroundView = UIView()
+        selectedBackgroundView?.backgroundColor = .listBackground
+    }
+}
+
+// MARK: Accessibility
+//
+private extension ImageAndTitleAndTextTableViewCell {
+    func applyAccessibilityChanges(contentSizeCategory: UIContentSizeCategory, style: Style) {
+        adjustContentStackViewAxis(contentSizeCategory: contentSizeCategory, style: style)
+    }
+
+    /// Changes the image view width according to the base image dimension.
+    func adjustContentStackViewAxis(contentSizeCategory: UIContentSizeCategory, style: Style) {
+        let isVerticalStack = contentSizeCategory >= .accessibilityMedium
+        contentStackView.axis = isVerticalStack ? .vertical: .horizontal
+        contentStackView.alignment = isVerticalStack ? .leading: style.contentStackViewAlignment
+        contentStackView.spacing = isVerticalStack ? 5: 16
+    }
+}
+
+private extension ImageAndTitleAndTextTableViewCell.Style {
+    var contentStackViewAlignment: UIStackView.Alignment {
+        switch self {
+        case .imageAndTitleOnly(let fontStyle) where fontStyle == .footnote:
+            // Image and title footnote style is generally used for short notice, and thus the image and title are center aligned vertically.
+            return .center
+        default:
+            return .firstBaseline
+        }
     }
 }

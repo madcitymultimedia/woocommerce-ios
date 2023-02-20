@@ -1,6 +1,7 @@
 import XCTest
 @testable import WooCommerce
 import Yosemite
+import WooFoundation
 
 final class RefundShippingLabelViewModelTests: XCTestCase {
     func test_refundableAmount_is_formatted_correctly() {
@@ -48,7 +49,7 @@ final class RefundShippingLabelViewModelTests: XCTestCase {
                                                      stores: stores)
 
         // When
-        let refundResult = try waitFor { promise in
+        let refundResult = waitFor { promise in
             viewModel.refundShippingLabel { result in
                 promise(result)
             }
@@ -76,7 +77,7 @@ final class RefundShippingLabelViewModelTests: XCTestCase {
                                                      stores: stores)
 
         // When
-        let refundResult = try waitFor { promise in
+        let refundResult = waitFor { promise in
             viewModel.refundShippingLabel { result in
                 promise(result)
             }

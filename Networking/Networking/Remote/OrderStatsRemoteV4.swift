@@ -1,5 +1,4 @@
 import Foundation
-import Alamofire
 
 /// OrderStats: Remote Endpoints found in wc-admin's v4 API
 ///
@@ -7,29 +6,39 @@ public final class OrderStatsRemoteV4: Remote {
     /// Fetch the order stats for a given site, depending on the given granularity of the `unit` parameter.
     ///
     /// - Parameters:
-    ///   - siteID: The site ID
-    ///   - unit: Defines the granularity of the stats we are fetching (one of 'hourly', 'daily', 'weekly', 'monthly', or 'yearly')
+    ///   - siteID: The site ID.
+    ///   - unit: Defines the granularity of the stats we are fetching (one of 'hourly', 'daily', 'weekly', 'monthly', or 'yearly').
+    ///   - earliestDateToInclude: The earliest date to include in the results.
     ///   - latestDateToInclude: The latest date to include in the results.
-    ///     This string is ISO8601 compliant
+    ///   - quantity: The number of intervals to fetch the order stats.
+    ///   - forceRefresh: Whether to enforce the data being refreshed.
     ///   - completion: Closure to be executed upon completion.
     ///
     /// Note: by limiting the return values with the `_fields` param, we shrink the response size by over 90%! (~40kb to ~3kb)
     ///
     public func loadOrderStats(for siteID: Int64,
                                unit: StatsGranularityV4,
-                               earliestDateToInclude: String,
-                               latestDateToInclude: String,
+                               earliestDateToInclude: Date,
+                               latestDateToInclude: Date,
                                quantity: Int,
-                               completion: @escaping (OrderStatsV4?, Error?) -> Void) {
-        // Workaround for #1183: random number between 31-100 for `num_page` param.
-        // Replace `randomQuantity` with `quantity` in `num_page` param when API issue is fixed.
-        let randomQuantity = arc4random_uniform(70) + 31
-        let parameters = [ParameterKeys.interval: unit.rawValue,
-                          ParameterKeys.after: earliestDateToInclude,
-                          ParameterKeys.before: latestDateToInclude,
-                          ParameterKeys.quantity: String(randomQuantity)]
+                               forceRefresh: Bool,
+                               completion: @escaping (Result<OrderStatsV4, Error>) -> Void) {
+        let dateFormatter = DateFormatter.Defaults.iso8601WithoutTimeZone
 
-        let request = JetpackRequest(wooApiVersion: .wcAnalytics, method: .get, siteID: siteID, path: Constants.orderStatsPath, parameters: parameters)
+        let parameters: [String: Any] = [
+            ParameterKeys.interval: unit.rawValue,
+            ParameterKeys.after: dateFormatter.string(from: earliestDateToInclude),
+            ParameterKeys.before: dateFormatter.string(from: latestDateToInclude),
+            ParameterKeys.quantity: String(quantity),
+            ParameterKeys.forceRefresh: forceRefresh
+        ]
+
+        let request = JetpackRequest(wooApiVersion: .wcAnalytics,
+                                     method: .get,
+                                     siteID: siteID,
+                                     path: Constants.orderStatsPath,
+                                     parameters: parameters,
+                                     availableAsRESTRequest: true)
         let mapper = OrderStatsV4Mapper(siteID: siteID, granularity: unit)
         enqueue(request, mapper: mapper, completion: completion)
     }
@@ -44,9 +53,10 @@ private extension OrderStatsRemoteV4 {
     }
 
     enum ParameterKeys {
-        static let interval: String = "interval"
-        static let after: String    = "after"
-        static let before: String   = "before"
-        static let quantity: String = "per_page"
+        static let interval = "interval"
+        static let after = "after"
+        static let before = "before"
+        static let quantity = "per_page"
+        static let forceRefresh = "force_cache_refresh"
     }
 }

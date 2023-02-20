@@ -1,8 +1,9 @@
 import Foundation
+import Codegen
 
 /// Represents a Shipping Label Refund.
 ///
-public struct ShippingLabelRefund: Equatable {
+public struct ShippingLabelRefund: Equatable, GeneratedFakeable {
     /// The date of refund request.
     public let dateRequested: Date
 

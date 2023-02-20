@@ -3,13 +3,15 @@ import Yosemite
 /// Edit actions in the product form. Each action allows the user to edit a subset of product properties.
 enum ProductFormEditAction: Equatable {
     case images(editable: Bool)
+    case linkedProductsPromo(viewModel: FeatureAnnouncementCardViewModel)
     case name(editable: Bool)
     case description(editable: Bool)
-    case priceSettings(editable: Bool)
+    case priceSettings(editable: Bool, hideSeparator: Bool)
     case reviews
     case productType(editable: Bool)
     case inventorySettings(editable: Bool)
     case shippingSettings(editable: Bool)
+    case addOns(editable: Bool)
     case categories(editable: Bool)
     case tags(editable: Bool)
     case shortDescription(editable: Bool)
@@ -20,33 +22,68 @@ enum ProductFormEditAction: Equatable {
     // Grouped products only
     case groupedProducts(editable: Bool)
     // Variable products only
-    case variations
+    case variations(hideSeparator: Bool)
     // Variation only
     case variationName
     case noPriceWarning
     case status(editable: Bool)
+    case attributes(editable: Bool)
     // Downloadable products only
-    case downloadableFiles
+    case downloadableFiles(editable: Bool)
 }
 
 /// Creates actions for different sections/UI on the product form.
 struct ProductFormActionsFactory: ProductFormActionsFactoryProtocol {
+
+    /// Represents the variation price state.
+    ///
+    enum VariationsPrice {
+        case unknown // Un-fetched variations
+        case notSet
+        case set
+    }
+
     private let product: EditableProductModel
     private let formType: ProductFormType
     private let editable: Bool
+    private let addOnsFeatureEnabled: Bool
+    private let variationsPrice: VariationsPrice
 
-    init(product: EditableProductModel, formType: ProductFormType) {
+    private let isLinkedProductsPromoEnabled: Bool
+    private let linkedProductsPromoCampaign = LinkedProductsPromoCampaign()
+    private var linkedProductsPromoViewModel: FeatureAnnouncementCardViewModel {
+        .init(analytics: ServiceLocator.analytics,
+              configuration: linkedProductsPromoCampaign.configuration)
+    }
+
+    // TODO: Remove default parameter
+    init(product: EditableProductModel,
+         formType: ProductFormType,
+         addOnsFeatureEnabled: Bool = true,
+         isLinkedProductsPromoEnabled: Bool = false,
+         variationsPrice: VariationsPrice = .unknown) {
         self.product = product
         self.formType = formType
         self.editable = formType != .readonly
+        self.addOnsFeatureEnabled = addOnsFeatureEnabled
+        self.variationsPrice = variationsPrice
+        self.isLinkedProductsPromoEnabled = isLinkedProductsPromoEnabled
     }
 
     /// Returns an array of actions that are visible in the product form primary section.
     func primarySectionActions() -> [ProductFormEditAction] {
         let shouldShowImagesRow = editable || product.images.isNotEmpty
         let shouldShowDescriptionRow = editable || product.description?.isNotEmpty == true
+
+        let newLinkedProductsPromoViewModel = linkedProductsPromoViewModel
+        let shouldShowLinkedProductsPromo = isLinkedProductsPromoEnabled
+        && newLinkedProductsPromoViewModel.shouldBeVisible
+        && product.upsellIDs.isEmpty
+        && product.crossSellIDs.isEmpty
+
         let actions: [ProductFormEditAction?] = [
             shouldShowImagesRow ? .images(editable: editable): nil,
+            shouldShowLinkedProductsPromo ? .linkedProductsPromo(viewModel: newLinkedProductsPromoViewModel) : nil,
             .name(editable: editable),
             shouldShowDescriptionRow ? .description(editable: editable): nil
         ]
@@ -87,21 +124,23 @@ private extension ProductFormActionsFactory {
 
     func allSettingsSectionActionsForSimpleProduct() -> [ProductFormEditAction] {
         let shouldShowReviewsRow = product.reviewsAllowed
-        let shouldShowProductTypeRow = formType != .add
+        let canEditProductType = formType != .add && editable
         let shouldShowShippingSettingsRow = product.isShippingEnabled()
         let shouldShowDownloadableProduct = product.downloadable
+        let canEditInventorySettingsRow = editable && product.hasIntegerStockQuantity
 
         let actions: [ProductFormEditAction?] = [
-            .priceSettings(editable: editable),
+            .priceSettings(editable: editable, hideSeparator: false),
             shouldShowReviewsRow ? .reviews: nil,
             shouldShowShippingSettingsRow ? .shippingSettings(editable: editable): nil,
-            .inventorySettings(editable: editable),
+            .inventorySettings(editable: canEditInventorySettingsRow),
+            .addOns(editable: editable),
             .categories(editable: editable),
             .tags(editable: editable),
-            shouldShowDownloadableProduct ? .downloadableFiles: nil,
+            shouldShowDownloadableProduct ? .downloadableFiles(editable: editable): nil,
             .shortDescription(editable: editable),
             .linkedProducts(editable: editable),
-            shouldShowProductTypeRow ? .productType(editable: editable): nil
+            .productType(editable: canEditProductType)
         ]
         return actions.compactMap { $0 }
     }
@@ -110,18 +149,19 @@ private extension ProductFormActionsFactory {
         let shouldShowReviewsRow = product.reviewsAllowed
         let shouldShowExternalURLRow = editable || product.product.externalURL?.isNotEmpty == true
         let shouldShowSKURow = editable || product.sku?.isNotEmpty == true
-        let shouldShowProductTypeRow = formType != .add
+        let canEditProductType = formType != .add && editable
 
         let actions: [ProductFormEditAction?] = [
-            .priceSettings(editable: editable),
+            .priceSettings(editable: editable, hideSeparator: false),
             shouldShowReviewsRow ? .reviews: nil,
             shouldShowExternalURLRow ? .externalURL(editable: editable): nil,
             shouldShowSKURow ? .sku(editable: editable): nil,
+            .addOns(editable: editable),
             .categories(editable: editable),
             .tags(editable: editable),
             .shortDescription(editable: editable),
             .linkedProducts(editable: editable),
-            shouldShowProductTypeRow ? .productType(editable: editable): nil
+            .productType(editable: canEditProductType)
         ]
         return actions.compactMap { $0 }
     }
@@ -129,35 +169,46 @@ private extension ProductFormActionsFactory {
     func allSettingsSectionActionsForGroupedProduct() -> [ProductFormEditAction] {
         let shouldShowReviewsRow = product.reviewsAllowed
         let shouldShowSKURow = editable || product.sku?.isNotEmpty == true
-        let shouldShowProductTypeRow = formType != .add
+        let canEditProductType = formType != .add && editable
 
         let actions: [ProductFormEditAction?] = [
             .groupedProducts(editable: editable),
             shouldShowReviewsRow ? .reviews: nil,
             shouldShowSKURow ? .sku(editable: editable): nil,
+            .addOns(editable: editable),
             .categories(editable: editable),
             .tags(editable: editable),
             .shortDescription(editable: editable),
             .linkedProducts(editable: editable),
-            shouldShowProductTypeRow ? .productType(editable: editable): nil
+            .productType(editable: canEditProductType)
         ]
         return actions.compactMap { $0 }
     }
 
     func allSettingsSectionActionsForVariableProduct() -> [ProductFormEditAction] {
         let shouldShowReviewsRow = product.reviewsAllowed
-        let shouldShowProductTypeRow = formType != .add
+        let canEditProductType = formType != .add && editable
+        let canEditInventorySettingsRow = editable && product.hasIntegerStockQuantity
+        let shouldShowAttributesRow = product.product.attributesForVariations.isNotEmpty
+        let shouldShowNoPriceWarningRow: Bool = {
+            let variationsHaveNoPriceSet = variationsPrice == .notSet
+            let productHasNoPriceSet = variationsPrice == .unknown && product.product.variations.isNotEmpty && product.product.price.isEmpty
+            return canEditProductType && (variationsHaveNoPriceSet || productHasNoPriceSet)
+        }()
 
         let actions: [ProductFormEditAction?] = [
-            .variations,
+            .variations(hideSeparator: shouldShowNoPriceWarningRow),
+            shouldShowNoPriceWarningRow ? .noPriceWarning : nil,
+            shouldShowAttributesRow ? .attributes(editable: editable) : nil,
             shouldShowReviewsRow ? .reviews: nil,
             .shippingSettings(editable: editable),
-            .inventorySettings(editable: editable),
+            .inventorySettings(editable: canEditInventorySettingsRow),
+            .addOns(editable: editable),
             .categories(editable: editable),
             .tags(editable: editable),
             .shortDescription(editable: editable),
             .linkedProducts(editable: editable),
-            shouldShowProductTypeRow ? .productType(editable: editable): nil
+            .productType(editable: canEditProductType)
         ]
         return actions.compactMap { $0 }
     }
@@ -167,10 +218,11 @@ private extension ProductFormActionsFactory {
         let shouldShowReviewsRow = product.reviewsAllowed
 
         let actions: [ProductFormEditAction?] = [
-            shouldShowPriceSettingsRow ? .priceSettings(editable: false): nil,
+            shouldShowPriceSettingsRow ? .priceSettings(editable: false, hideSeparator: false): nil,
             shouldShowReviewsRow ? .reviews: nil,
             .inventorySettings(editable: false),
             .categories(editable: editable),
+            .addOns(editable: editable),
             .tags(editable: editable),
             .shortDescription(editable: editable),
             .linkedProducts(editable: editable),
@@ -206,6 +258,8 @@ private extension ProductFormActionsFactory {
         case .shippingSettings:
             return product.weight.isNilOrEmpty == false ||
                 product.dimensions.height.isNotEmpty || product.dimensions.width.isNotEmpty || product.dimensions.length.isNotEmpty
+        case .addOns:
+            return addOnsFeatureEnabled && product.hasAddOns
         case .categories:
             return product.product.categories.isNotEmpty
         case .tags:
@@ -230,6 +284,12 @@ private extension ProductFormActionsFactory {
         // Variable products only.
         case .variations:
             // The variations row is always visible in the settings section for a variable product.
+            return true
+        case .noPriceWarning:
+            // Always visible when available
+            return true
+        case .attributes:
+            // Always visible when available
             return true
         default:
             return false

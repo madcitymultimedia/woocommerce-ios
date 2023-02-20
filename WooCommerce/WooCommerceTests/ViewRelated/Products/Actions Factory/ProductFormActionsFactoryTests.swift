@@ -1,4 +1,5 @@
 import XCTest
+import Fakes
 
 @testable import WooCommerce
 @testable import Yosemite
@@ -10,14 +11,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .shippingSettings(editable: true),
                                                                        .inventorySettings(editable: true),
@@ -38,14 +38,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .shippingSettings(editable: true),
                                                                        .inventorySettings(editable: true),
@@ -66,14 +65,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .shippingSettings(editable: true),
                                                                        .inventorySettings(editable: true),
                                                                        .categories(editable: true),
@@ -93,14 +91,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .shippingSettings(editable: true),
                                                                        .inventorySettings(editable: true),
                                                                        .categories(editable: true),
@@ -119,14 +116,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .shippingSettings(editable: true),
                                                                        .inventorySettings(editable: true),
@@ -147,19 +143,18 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .inventorySettings(editable: true),
                                                                        .categories(editable: true),
                                                                        .tags(editable: true),
-                                                                       .downloadableFiles,
+                                                                       .downloadableFiles(editable: true),
                                                                        .shortDescription(editable: true),
                                                                        .linkedProducts(editable: true),
                                                                        .productType(editable: true)]
@@ -175,14 +170,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .inventorySettings(editable: true),
                                                                        .categories(editable: true),
@@ -202,14 +196,13 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
-        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true),
+        let expectedSettingsSectionActions: [ProductFormEditAction] = [.priceSettings(editable: true, hideSeparator: false),
                                                                        .reviews,
                                                                        .externalURL(editable: true),
                                                                        .linkedProducts(editable: true),
@@ -226,8 +219,7 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
@@ -249,15 +241,14 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
         let expectedSettingsSectionActions: [ProductFormEditAction] = [
-            .variations,
+            .variations(hideSeparator: false),
             .reviews,
             .shippingSettings(editable: true),
             .inventorySettings(editable: true),
@@ -276,15 +267,15 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
         let expectedSettingsSectionActions: [ProductFormEditAction] = [
-            .variations,
+            .variations(hideSeparator: true),
+            .noPriceWarning,
             .reviews,
             .shippingSettings(editable: true),
             .inventorySettings(editable: true),
@@ -303,8 +294,7 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
@@ -326,15 +316,14 @@ final class ProductFormActionsFactoryTests: XCTestCase {
         let model = EditableProductModel(product: product)
 
         // Action
-        let factory = ProductFormActionsFactory(product: model,
-                                                formType: .edit)
+        let factory = ProductFormActionsFactory(product: model, formType: .edit)
 
         // Assert
         let expectedPrimarySectionActions: [ProductFormEditAction] = [.images(editable: true), .name(editable: true), .description(editable: true)]
         XCTAssertEqual(factory.primarySectionActions(), expectedPrimarySectionActions)
 
         let expectedSettingsSectionActions: [ProductFormEditAction] = [
-            .priceSettings(editable: false),
+            .priceSettings(editable: false, hideSeparator: false),
             .reviews,
             .inventorySettings(editable: false),
             .linkedProducts(editable: true),
@@ -344,6 +333,139 @@ final class ProductFormActionsFactoryTests: XCTestCase {
 
         let expectedBottomSheetActions: [ProductFormBottomSheetAction] = [.editCategories, .editTags, .editShortDescription]
         XCTAssertEqual(factory.bottomSheetActions(), expectedBottomSheetActions)
+    }
+
+    func test_actions_for_products_with_add_ons_while_feature_is_enabled() {
+        // Given
+        let products = [
+            Fixtures.physicalSimpleProductWithImages.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.affiliateProduct.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.groupedProduct.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.variableProductWithVariations.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.nonCoreProductWithPrice.copy(addOns: [ProductAddOn.fake()])
+        ]
+
+        products.forEach { product in
+            let model = EditableProductModel(product: product)
+
+            // When
+            let factory = ProductFormActionsFactory(product: model, formType: .edit, addOnsFeatureEnabled: true)
+
+            // Then
+            let containsAddOnAction = factory.settingsSectionActions().contains(ProductFormEditAction.addOns(editable: true))
+            XCTAssertTrue(containsAddOnAction)
+        }
+    }
+
+    func test_actions_for_products_with_add_ons_while_feature_is_disabled() {
+        // Given
+        let products = [
+            Fixtures.physicalSimpleProductWithImages.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.affiliateProduct.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.groupedProduct.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.variableProductWithVariations.copy(addOns: [ProductAddOn.fake()]),
+            Fixtures.nonCoreProductWithPrice.copy(addOns: [ProductAddOn.fake()])
+        ]
+
+        products.forEach { product in
+            let model = EditableProductModel(product: product)
+
+            // When
+            let factory = ProductFormActionsFactory(product: model, formType: .edit, addOnsFeatureEnabled: false)
+
+            // Then
+            let containsAddOnAction = factory.settingsSectionActions().contains(ProductFormEditAction.addOns(editable: true))
+            XCTAssertFalse(containsAddOnAction)
+        }
+    }
+
+    func test_actions_for_products_with_no_add_ons_while_feature_is_enabled() {
+        // Given
+        let products = [
+            Fixtures.physicalSimpleProductWithImages.copy(addOns: []),
+            Fixtures.affiliateProduct.copy(addOns: []),
+            Fixtures.groupedProduct.copy(addOns: []),
+            Fixtures.variableProductWithVariations.copy(addOns: []),
+            Fixtures.nonCoreProductWithPrice.copy(addOns: [])
+        ]
+
+        products.forEach { product in
+            let model = EditableProductModel(product: product)
+
+            // When
+            let factory = ProductFormActionsFactory(product: model, formType: .edit, addOnsFeatureEnabled: false)
+
+            // Then
+            let containsAddOnAction = factory.settingsSectionActions().contains(ProductFormEditAction.addOns(editable: true))
+            XCTAssertFalse(containsAddOnAction)
+        }
+    }
+
+    func test_actions_for_variable_product_with_variations_price_not_set_contains_noPriceWarning_action() {
+        // Given
+        let product = Fixtures.variableProductWithVariations.copy(price: "")
+        let model = EditableProductModel(product: product)
+
+        // When
+        let factory = ProductFormActionsFactory(product: model, formType: .edit, variationsPrice: .notSet)
+
+        // Then
+        let containsWarningAction = factory.settingsSectionActions().contains(ProductFormEditAction.noPriceWarning)
+        XCTAssertTrue(containsWarningAction)
+    }
+
+    func test_actions_for_variable_product_with_variations_price_set_does_not_contains_noPriceWarning_action() {
+        // Given
+        let product = Fixtures.variableProductWithVariations.copy(price: "")
+        let model = EditableProductModel(product: product)
+
+        // When
+        let factory = ProductFormActionsFactory(product: model, formType: .edit, variationsPrice: .set)
+
+        // Then
+        let containsWarningAction = factory.settingsSectionActions().contains(ProductFormEditAction.noPriceWarning)
+        XCTAssertFalse(containsWarningAction)
+    }
+
+    func test_actions_for_variable_product_with_no_product_price_set_contains_noPriceWarning_action() {
+        // Given
+        let product = Fixtures.variableProductWithVariations.copy(price: "")
+        let model = EditableProductModel(product: product)
+
+        // When
+        let factory = ProductFormActionsFactory(product: model, formType: .edit, variationsPrice: .unknown)
+
+        // Then
+        let containsWarningAction = factory.settingsSectionActions().contains(ProductFormEditAction.noPriceWarning)
+        XCTAssertTrue(containsWarningAction)
+    }
+
+    func test_actions_for_variable_product_with_product_price_set_contains_noPriceWarning_action() {
+        // Given
+        let product = Fixtures.variableProductWithVariations.copy(price: "10.12")
+        let model = EditableProductModel(product: product)
+
+        // When
+        let factory = ProductFormActionsFactory(product: model, formType: .edit, variationsPrice: .unknown)
+
+        // Then
+        let containsWarningAction = factory.settingsSectionActions().contains(ProductFormEditAction.noPriceWarning)
+        XCTAssertFalse(containsWarningAction)
+    }
+
+    func test_actions_for_variable_product_with_attributes_contains_attributes_action() {
+        // Given
+        let product = Fixtures.variableProductWithVariations.copy(attributes: [
+            ProductAttribute.fake().copy(variation: true)
+        ])
+        let model = EditableProductModel(product: product)
+
+        // When
+        let factory = ProductFormActionsFactory(product: model, formType: .edit, variationsPrice: .unknown)
+
+        // Then
+        let containsAttributeAction = factory.settingsSectionActions().contains(ProductFormEditAction.attributes(editable: true))
+        XCTAssertTrue(containsAttributeAction)
     }
 }
 
@@ -358,84 +480,44 @@ private extension ProductFormActionsFactoryTests {
                                         alt: "")
         static let tag = ProductTag(siteID: 123, tagID: 1, name: "", slug: "")
         // downloadable: false, virtual: false, with inventory/shipping/categories/tags/short description
-        static let physicalSimpleProductWithoutImages = MockProduct().product(downloadable: false, shortDescription: "desc", productType: .simple,
-                                                                              manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                              dimensions: ProductDimensions(length: "", width: "", height: ""), weight: "2",
-                                                                              virtual: false,
-                                                                              categories: [category],
-                                                                              tags: [tag],
-                                                                              images: [])
+        static let physicalSimpleProductWithoutImages = Fakes.ProductFactory.simpleProductWithNoImages()
+
         // downloadable: false, virtual: true, with inventory/shipping/categories/tags/short description
-        static let physicalSimpleProductWithImages = MockProduct().product(downloadable: false, shortDescription: "desc", productType: .simple,
-                                                                           manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                           dimensions: ProductDimensions(length: "", width: "", height: ""), weight: "2",
-                                                                           virtual: false,
-                                                                           categories: [category],
-                                                                           tags: [tag],
-                                                                           images: [image])
+        static let physicalSimpleProductWithImages = physicalSimpleProductWithoutImages.copy(images: [image])
+
         // downloadable: false, virtual: true, reviews: false, with inventory/shipping/categories/tags/short description
-        static let physicalSimpleProductWithReviewsDisabled = MockProduct().product(downloadable: false,
-                                                                                    shortDescription: "desc", productType: .simple,
-                                                                                    manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                                    dimensions: ProductDimensions(length: "", width: "", height: ""),
-                                                                                    weight: "2",
-                                                                                    virtual: false,
-                                                                                    reviewsAllowed: false,
-                                                                                    categories: [category],
-                                                                                    tags: [tag],
-                                                                                    images: [image])
+        static let physicalSimpleProductWithReviewsDisabled = physicalSimpleProductWithImages.copy(reviewsAllowed: false)
+
         // downloadable: false, virtual: true, reviews: false, with inventory/shipping/categories/tags/short description
-        static let physicalSimpleProductWithoutLinkedProducts = MockProduct().product(downloadable: false,
-                                                                                    shortDescription: "desc", productType: .simple,
-                                                                                    manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                                    dimensions: ProductDimensions(length: "", width: "", height: ""),
-                                                                                    weight: "2",
-                                                                                    virtual: false,
-                                                                                    reviewsAllowed: false,
-                                                                                    categories: [category],
-                                                                                    tags: [tag],
-                                                                                    images: [image],
-                                                                                    upsellIDs: [],
-                                                                                    crossSellIDs: [])
+        static let physicalSimpleProductWithoutLinkedProducts = physicalSimpleProductWithReviewsDisabled.copy(upsellIDs: [], crossSellIDs: [])
+
         // downloadable: false, virtual: true, with inventory/shipping/categories/tags/short description
-        static let virtualSimpleProduct = MockProduct().product(downloadable: false, shortDescription: "desc", productType: .simple,
-                                                                manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                dimensions: ProductDimensions(length: "", width: "", height: ""), weight: "2",
-                                                                virtual: true,
-                                                                categories: [category],
-                                                                tags: [tag])
+        static let virtualSimpleProduct = physicalSimpleProductWithoutImages.copy(virtual: true)
+
         // downloadable: true, virtual: true, missing inventory/shipping/categories/short description
-        static let downloadableSimpleProduct = MockProduct().product(downloadable: true, shortDescription: "desc", productType: .simple,
-                                                                     manageStock: true, sku: "uks", stockQuantity: nil,
-                                                                     dimensions: ProductDimensions(length: "", width: "", height: ""), weight: "3",
-                                                                     virtual: true,
-                                                                     categories: [category],
-                                                                     tags: [tag])
+        static let downloadableSimpleProduct = virtualSimpleProduct.copy(downloadable: true)
+
         // Affiliate product, missing external URL/sku/inventory/short description/categories/tags
-        static let affiliateProduct = MockProduct().product(shortDescription: "",
-                                                            externalURL: "",
-                                                            productType: .affiliate,
-                                                            sku: "",
-                                                            categories: [],
-                                                            tags: [])
+        static let affiliateProduct = physicalSimpleProductWithoutImages.copy(productTypeKey: ProductType.affiliate.rawValue,
+                                                                              shortDescription: "",
+                                                                              sku: "",
+                                                                              externalURL: "",
+                                                                              categories: [],
+                                                                              tags: [])
+
         // Grouped product, missing grouped products/sku/short description/categories/tags
-        static let groupedProduct = MockProduct().product(shortDescription: "",
-                                                          productType: .grouped,
-                                                          sku: "")
+        static let groupedProduct = affiliateProduct.copy(productTypeKey: ProductType.grouped.rawValue)
+
         // Variable product, missing variations/short description/categories/tags
-        static let variableProductWithoutVariations = MockProduct().product(shortDescription: "",
-                                                                            productType: .variable,
-                                                                            sku: "").copy(variations: [])
+        static let variableProductWithoutVariations = affiliateProduct.copy(productTypeKey: ProductType.variable.rawValue, variations: [])
+
         // Variable product with one variation, missing short description/categories/tags
-        static let variableProductWithVariations = MockProduct().product(shortDescription: "",
-                                                                         productType: .variable,
-                                                                         sku: "").copy(variations: [123])
+        static let variableProductWithVariations = variableProductWithoutVariations.copy(variations: [123])
+
         // Non-core product, missing price/short description/categories/tags
-        static let nonCoreProductWithoutPrice = MockProduct().product(shortDescription: "",
-                                                                      productType: .custom("other")).copy(regularPrice: "")
+        static let nonCoreProductWithoutPrice = affiliateProduct.copy(productTypeKey: "other", regularPrice: "")
 
         // Non-core product, missing short description/categories/tags
-        static let nonCoreProductWithPrice = MockProduct().product(shortDescription: "",
-                                                                   productType: .custom("other")).copy(regularPrice: "2")
+        static let nonCoreProductWithPrice = nonCoreProductWithoutPrice.copy(regularPrice: "2")
     }
 }

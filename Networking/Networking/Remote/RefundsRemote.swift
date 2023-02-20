@@ -1,5 +1,4 @@
 import Foundation
-import Alamofire
 
 
 /// Refunds: Remote Endpoints
@@ -29,7 +28,12 @@ public final class RefundsRemote: Remote {
             ParameterKey.contextKey: context
         ]
         let path = "\(Path.orders)/" + String(orderID) + "/" + "\(Path.refunds)"
-        let request = JetpackRequest(wooApiVersion: .mark3, method: .get, siteID: siteID, path: path, parameters: parameters)
+        let request = JetpackRequest(wooApiVersion: .mark3,
+                                     method: .get,
+                                     siteID: siteID,
+                                     path: path,
+                                     parameters: parameters,
+                                     availableAsRESTRequest: true)
         let mapper = RefundListMapper(siteID: siteID, orderID: orderID)
 
         enqueue(request, mapper: mapper, completion: completion)
@@ -50,7 +54,12 @@ public final class RefundsRemote: Remote {
         let stringOfRefundIDs = refundIDs.sortedUniqueIntToString()
         let parameters = [ ParameterKey.include: stringOfRefundIDs ]
         let path = "\(Path.orders)/" + String(orderID) + "/" + "\(Path.refunds)"
-        let request = JetpackRequest(wooApiVersion: .mark3, method: .get, siteID: siteID, path: path, parameters: parameters)
+        let request = JetpackRequest(wooApiVersion: .mark3,
+                                     method: .get,
+                                     siteID: siteID,
+                                     path: path,
+                                     parameters: parameters,
+                                     availableAsRESTRequest: true)
         let mapper = RefundListMapper(siteID: siteID, orderID: orderID)
 
         enqueue(request, mapper: mapper, completion: completion)
@@ -69,7 +78,12 @@ public final class RefundsRemote: Remote {
                            refundID: Int64,
                            completion: @escaping (Refund?, Error?) -> Void) {
         let path = Path.orders + "/" + String(orderID) + "/" + Path.refunds + "/" + String(refundID)
-        let request = JetpackRequest(wooApiVersion: .mark3, method: .get, siteID: siteID, path: path, parameters: nil)
+        let request = JetpackRequest(wooApiVersion: .mark3,
+                                     method: .get,
+                                     siteID: siteID,
+                                     path: path,
+                                     parameters: nil,
+                                     availableAsRESTRequest: true)
         let mapper = RefundMapper(siteID: siteID, orderID: orderID)
 
         enqueue(request, mapper: mapper, completion: completion)
@@ -93,7 +107,12 @@ public final class RefundsRemote: Remote {
         do {
             let encodedJson = try mapper.map(refund: refund)
             let parameters: [String: Any]? = try JSONSerialization.jsonObject(with: encodedJson, options: []) as? [String: Any]
-            let request = JetpackRequest(wooApiVersion: .mark3, method: .post, siteID: siteID, path: path, parameters: parameters)
+            let request = JetpackRequest(wooApiVersion: .mark3,
+                                         method: .post,
+                                         siteID: siteID,
+                                         path: path,
+                                         parameters: parameters,
+                                         availableAsRESTRequest: true)
 
             enqueue(request, mapper: mapper, completion: completion)
         } catch {
