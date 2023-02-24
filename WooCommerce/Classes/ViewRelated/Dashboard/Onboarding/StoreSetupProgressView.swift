@@ -9,6 +9,10 @@ struct StoreSetupProgressView: View {
 
     var body: some View {
         HStack(alignment: .top) {
+            Spacer()
+                .frame(width: 80)
+                .renderedIf(isExpanded)
+
             VStack(alignment: isExpanded ? .center : .leading, spacing: Layout.verticalSpacing) {
                 // Title label
                 Text(Localization.title)
@@ -20,7 +24,7 @@ struct StoreSetupProgressView: View {
                 // Progress view
                 ProgressView(value: Double(numberOfTasksCompleted), total: Double(totalNumberOfTasks))
                     .tint(.init(uiColor: .accent))
-                    .frame(width: isExpanded ? Layout.ProgressView.widthExpanded : Layout.ProgressView.widthCollapsed, height: Layout.ProgressView.height)
+                    .frame(height: Layout.ProgressView.height)
 
                 // Subtitle label
                 Text(String(format: isExpanded ? Localization.TasksCompleted.expanded : Localization.TasksCompleted.collapsed,
@@ -29,19 +33,26 @@ struct StoreSetupProgressView: View {
                     .footnoteStyle()
                     .multilineTextAlignment(isExpanded ? .center : .leading)
             }
+            .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer()
+
+                // More button
+                Button {
+                    // TODO: Show the popup with feedback button
+                } label: {
+                    Image(uiImage: .ellipsisImage)
+                        .flipsForRightToLeftLayoutDirection(true)
+                        .foregroundColor(Color(.textTertiary))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .renderedIf(!isExpanded)
 
             Spacer()
-                .renderedIf(!isExpanded)
-
-            // More button
-            Button {
-                // TODO: Show the popup with feedback button
-            } label: {
-                Image(uiImage: .ellipsisImage)
-                    .flipsForRightToLeftLayoutDirection(true)
-                    .foregroundColor(Color(.textTertiary))
-            }
-            .renderedIf(!isExpanded)
+                .frame(width: 80)
+                .renderedIf(isExpanded)
         }
     }
 }
